@@ -2,6 +2,7 @@ import log from 'electron-log';
 import { autoUpdater } from 'electron-updater';
 
 import { isDev, isWindows } from '@/const/env';
+import { getDesktopEnv } from '@/env';
 import {
   UPDATE_SERVER_URL,
   UPDATE_CHANNEL as channel,
@@ -12,6 +13,9 @@ import {
 import { createLogger } from '@/utils/logger';
 
 import type { App as AppCore } from '../App';
+
+// Allow forcing dev update config via env (for testing updates in packaged app)
+const FORCE_DEV_UPDATE_CONFIG = getDesktopEnv().FORCE_DEV_UPDATE_CONFIG;
 
 // Create logger
 const logger = createLogger('core:UpdaterManager');
@@ -48,19 +52,26 @@ export class UpdaterManager {
     // Configure autoUpdater
     autoUpdater.autoDownload = false; // Set to false, we'll control downloads manually
     autoUpdater.autoInstallOnAppQuit = false;
-
-    autoUpdater.channel = channel;
-    autoUpdater.allowPrerelease = channel !== 'stable';
     autoUpdater.allowDowngrade = false;
 
-    // Configure update provider based on channel
-    this.configureUpdateProvider();
-
-    // Enable test mode in development environment
-    if (isDev) {
-      logger.info(`Running in dev mode, forcing update check, channel: ${autoUpdater.channel}`);
-      // Allow testing updates in development environment
+    // Enable test mode in development environment or when forced via env
+    // IMPORTANT: This must be set BEFORE channel configuration so that
+    // dev-app-update.yml takes precedence over programmatic configuration
+    const useDevConfig = isDev || FORCE_DEV_UPDATE_CONFIG;
+    if (useDevConfig) {
+      // In dev mode, use dev-app-update.yml for all configuration including channel
+      // Don't set channel here - let dev-app-update.yml control it (defaults to "latest")
       autoUpdater.forceDevUpdateConfig = true;
+      logger.info(
+        `Using dev update config (isDev=${isDev}, FORCE_DEV_UPDATE_CONFIG=${FORCE_DEV_UPDATE_CONFIG})`,
+      );
+      logger.info('Dev mode: Using dev-app-update.yml for update configuration');
+    } else {
+      // Only configure channel and update provider programmatically in production
+      autoUpdater.channel = channel;
+      autoUpdater.allowPrerelease = channel !== 'stable';
+      logger.info(`Production mode: channel=${channel}, allowPrerelease=${channel !== 'stable'}`);
+      this.configureUpdateProvider();
     }
 
     // Register events

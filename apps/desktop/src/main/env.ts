@@ -70,6 +70,9 @@ export const getDesktopEnv = memoize(() =>
       // escape hatch: allow testing static renderer in dev via env
       DESKTOP_RENDERER_STATIC: envBoolean(false),
 
+      // Force use dev-app-update.yml even in packaged app (for testing updates)
+      FORCE_DEV_UPDATE_CONFIG: envBoolean(false),
+
       // mcp client
       MCP_TOOL_TIMEOUT: envNumber(60_000),
 
