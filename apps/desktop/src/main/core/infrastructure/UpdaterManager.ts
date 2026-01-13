@@ -2,7 +2,13 @@ import log from 'electron-log';
 import { autoUpdater } from 'electron-updater';
 
 import { isDev, isWindows } from '@/const/env';
-import { UPDATE_CHANNEL as channel, updaterConfig } from '@/modules/updater/configs';
+import {
+  UPDATE_SERVER_URL,
+  UPDATE_CHANNEL as channel,
+  githubConfig,
+  isStableChannel,
+  updaterConfig,
+} from '@/modules/updater/configs';
 import { createLogger } from '@/utils/logger';
 
 import type { App as AppCore } from '../App';
@@ -46,6 +52,9 @@ export class UpdaterManager {
     autoUpdater.channel = channel;
     autoUpdater.allowPrerelease = channel !== 'stable';
     autoUpdater.allowDowngrade = false;
+
+    // Configure update provider based on channel
+    this.configureUpdateProvider();
 
     // Enable test mode in development environment
     if (isDev) {
@@ -290,6 +299,35 @@ export class UpdaterManager {
       }
     }, 300);
   };
+
+  /**
+   * Configure update provider based on channel
+   * - Stable channel + UPDATE_SERVER_URL: Use generic HTTP provider
+   * - Other channels (beta/nightly): Use GitHub provider
+   */
+  private configureUpdateProvider() {
+    if (isStableChannel && UPDATE_SERVER_URL) {
+      // Stable channel uses custom update server (generic HTTP)
+      logger.info(`Configuring generic provider for stable channel`);
+      logger.info(`Update server URL: ${UPDATE_SERVER_URL}`);
+
+      autoUpdater.setFeedURL({
+        provider: 'generic',
+        url: UPDATE_SERVER_URL,
+      });
+    } else {
+      // Beta/nightly channels use GitHub, or fallback to GitHub if UPDATE_SERVER_URL not configured
+      logger.info(`Configuring GitHub provider for ${channel} channel`);
+
+      autoUpdater.setFeedURL({
+        owner: githubConfig.owner,
+        provider: 'github',
+        repo: githubConfig.repo,
+      });
+
+      logger.info(`GitHub update URL configured: ${githubConfig.owner}/${githubConfig.repo}`);
+    }
+  }
 
   private registerEvents() {
     logger.debug('Registering updater events');

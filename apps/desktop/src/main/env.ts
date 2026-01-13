@@ -59,29 +59,33 @@ const envNumber = (defaultValue: number) =>
  */
 export const getDesktopEnv = memoize(() =>
   createEnv({
+    client: {},
+    clientPrefix: 'PUBLIC_',
+    emptyStringAsUndefined: true,
+    isServer: true,
+    runtimeEnv: process.env,
     server: {
       DEBUG_VERBOSE: envBoolean(false),
+
+      // escape hatch: allow testing static renderer in dev via env
+      DESKTOP_RENDERER_STATIC: envBoolean(false),
+
+      // mcp client
+      MCP_TOOL_TIMEOUT: envNumber(60_000),
 
       // keep optional to preserve existing behavior:
       // - unset NODE_ENV should behave like "not production" in logger runtime paths
       NODE_ENV: z.enum(['development', 'production', 'test']).optional(),
 
-      // escape hatch: allow testing static renderer in dev via env
-      DESKTOP_RENDERER_STATIC: envBoolean(false),
+      // cloud server url (can be overridden for selfhost/dev)
+      OFFICIAL_CLOUD_SERVER: z.string().optional().default('https://app.lobehub.com'),
 
       // updater
       UPDATE_CHANNEL: z.string().optional(),
 
-      // mcp client
-      MCP_TOOL_TIMEOUT: envNumber(60_000),
-
-      // cloud server url (can be overridden for selfhost/dev)
-      OFFICIAL_CLOUD_SERVER: z.string().optional().default('https://app.lobehub.com'),
+      // Custom update server URL (for stable channel)
+      // e.g., https://releases.lobehub.com/stable or https://your-bucket.s3.amazonaws.com/releases
+      UPDATE_SERVER_URL: z.string().optional(),
     },
-    clientPrefix: 'PUBLIC_',
-    client: {},
-    runtimeEnv: process.env,
-    emptyStringAsUndefined: true,
-    isServer: true,
   }),
 );
