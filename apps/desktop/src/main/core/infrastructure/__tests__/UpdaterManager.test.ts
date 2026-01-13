@@ -36,6 +36,7 @@ vi.mock('electron-updater', () => ({
     logger: null as any,
     on: vi.fn(),
     quitAndInstall: vi.fn(),
+    setFeedURL: vi.fn(),
   },
 }));
 
@@ -62,6 +63,12 @@ vi.mock('@/utils/logger', () => ({
 // Mock updater configs
 vi.mock('@/modules/updater/configs', () => ({
   UPDATE_CHANNEL: 'stable',
+  UPDATE_SERVER_URL: undefined,
+  githubConfig: {
+    owner: 'lobehub',
+    repo: 'lobe-chat',
+  },
+  isStableChannel: true,
   updaterConfig: {
     app: {
       autoCheckUpdate: false,
@@ -71,6 +78,13 @@ vi.mock('@/modules/updater/configs', () => ({
     enableAppUpdate: true,
     enableRenderHotUpdate: true,
   },
+}));
+
+// Mock env
+vi.mock('@/env', () => ({
+  getDesktopEnv: () => ({
+    FORCE_DEV_UPDATE_CONFIG: false,
+  }),
 }));
 
 // Mock isDev
