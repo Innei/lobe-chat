@@ -1,0 +1,388 @@
+name: Release Desktop Stable
+
+# ============================================
+# Stable 频道发版工作流
+# ============================================
+# 触发条件: 发布不含 pre-release 标识的 release (如 v2.0.0)
+#
+# 与 Beta 的区别:
+#   1. 仅响应 stable 版本 tag (不含 beta/alpha/rc/nightly)
+#   2. 使用 STABLE 专用的 Umami 配置
+#   3. 额外上传到 S3 更新服务器
+#   4. 构建时注入 UPDATE_SERVER_URL 让客户端从 S3 检查更新
+#
+# 需要配置的 Secrets (S3 相关, 统一 UPDATE_ 前缀):
+#   - UPDATE_AWS_ACCESS_KEY_ID
+#   - UPDATE_AWS_SECRET_ACCESS_KEY
+#   - UPDATE_S3_BUCKET (S3 存储桶名称)
+#   - UPDATE_S3_REGION (可选, 默认 us-east-1)
+#   - UPDATE_S3_ENDPOINT (可选, 用于 R2/MinIO 等 S3 兼容服务)
+#   - UPDATE_SERVER_URL (客户端检查更新的 URL)
+# ============================================
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 2.0.0)'
+        required: true
+        type: string
+      skip_s3_upload:
+        description: 'Skip S3 upload (for testing)'
+        required: false
+        type: boolean
+        default: true
+      skip_github_release:
+        description: 'Skip GitHub release upload (for testing)'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions: read-all
+
+env:
+  NODE_VERSION: '24.11.1'
+
+jobs:
+  # ============================================
+  # 检查版本信息
+  # ============================================
+  check-stable:
+    name: Check Release Version
+    runs-on: ubuntu-latest
+    outputs:
+      is_stable: ${{ steps.check.outputs.is_stable }}
+      version: ${{ steps.check.outputs.version }}
+      is_manual: ${{ steps.check.outputs.is_manual }}
+    steps:
+      - name: Check release info
+        id: check
+        run: |
+          # 判断触发方式
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            # 手动触发: 使用输入的版本号
+            version="${{ inputs.version }}"
+            echo "is_manual=true" >> $GITHUB_OUTPUT
+            echo "is_stable=true" >> $GITHUB_OUTPUT
+            echo "version=${version}" >> $GITHUB_OUTPUT
+            echo "🔧 Manual trigger: version=${version}"
+          else
+            # Release 触发: 从 tag 提取版本号
+            version="${{ github.event.release.tag_name }}"
+            version="${version#v}"
+            echo "is_manual=false" >> $GITHUB_OUTPUT
+            echo "version=${version}" >> $GITHUB_OUTPUT
+
+            # 检查是否为 stable 版本 (不含 beta/alpha/rc/nightly)
+            if [[ "$version" == *"beta"* ]] || [[ "$version" == *"alpha"* ]] || [[ "$version" == *"rc"* ]] || [[ "$version" == *"nightly"* ]]; then
+              echo "is_stable=false" >> $GITHUB_OUTPUT
+              echo "⏭️ Skipping: $version is not a stable release"
+            else
+              echo "is_stable=true" >> $GITHUB_OUTPUT
+              echo "✅ Stable release detected: $version"
+            fi
+          fi
+
+  # ============================================
+  # 代码质量检查
+  # ============================================
+  test:
+    name: Code quality check
+    needs: [check-stable]
+    if: needs.check-stable.outputs.is_stable == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install deps
+        run: bun i
+
+      - name: Lint
+        run: bun run lint
+
+  # ============================================
+  # 多平台构建
+  # ============================================
+  build:
+    needs: [check-stable, test]
+    if: needs.check-stable.outputs.is_stable == 'true'
+    name: Build Desktop App
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, macos-15-intel, windows-2025, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup build environment
+        uses: ./.github/actions/desktop-build-setup
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set package version
+        run: npm run workflow:set-desktop-version ${{ needs.check-stable.outputs.version }} stable
+
+      # macOS 构建
+      - name: Build artifact on macOS
+        if: runner.os == 'macOS'
+        run: npm run desktop:build
+        env:
+          UPDATE_CHANNEL: stable
+          UPDATE_SERVER_URL: ${{ secrets.UPDATE_SERVER_URL }}
+          APP_URL: http://localhost:3015
+          DATABASE_URL: 'postgresql://postgres@localhost:5432/postgres'
+          KEY_VAULTS_SECRET: 'oLXWIiR/AKF+rWaqy9lHkrYgzpATbW3CtJp3UfkVgpE='
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          CSC_FOR_PULL_REQUEST: true
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          NEXT_PUBLIC_DESKTOP_PROJECT_ID: ${{ secrets.UMAMI_STABLE_DESKTOP_PROJECT_ID }}
+          NEXT_PUBLIC_DESKTOP_UMAMI_BASE_URL: ${{ secrets.UMAMI_STABLE_DESKTOP_BASE_URL }}
+
+      # Windows 构建
+      - name: Build artifact on Windows
+        if: runner.os == 'Windows'
+        run: npm run desktop:build
+        env:
+          UPDATE_CHANNEL: stable
+          UPDATE_SERVER_URL: ${{ secrets.UPDATE_SERVER_URL }}
+          APP_URL: http://localhost:3015
+          DATABASE_URL: 'postgresql://postgres@localhost:5432/postgres'
+          KEY_VAULTS_SECRET: 'oLXWIiR/AKF+rWaqy9lHkrYgzpATbW3CtJp3UfkVgpE='
+          NEXT_PUBLIC_DESKTOP_PROJECT_ID: ${{ secrets.UMAMI_STABLE_DESKTOP_PROJECT_ID }}
+          NEXT_PUBLIC_DESKTOP_UMAMI_BASE_URL: ${{ secrets.UMAMI_STABLE_DESKTOP_BASE_URL }}
+          TEMP: C:\temp
+          TMP: C:\temp
+
+      # Linux 构建
+      - name: Build artifact on Linux
+        if: runner.os == 'Linux'
+        run: npm run desktop:build
+        env:
+          UPDATE_CHANNEL: stable
+          UPDATE_SERVER_URL: ${{ secrets.UPDATE_SERVER_URL }}
+          APP_URL: http://localhost:3015
+          DATABASE_URL: 'postgresql://postgres@localhost:5432/postgres'
+          KEY_VAULTS_SECRET: 'oLXWIiR/AKF+rWaqy9lHkrYgzpATbW3CtJp3UfkVgpE='
+          NEXT_PUBLIC_DESKTOP_PROJECT_ID: ${{ secrets.UMAMI_STABLE_DESKTOP_PROJECT_ID }}
+          NEXT_PUBLIC_DESKTOP_UMAMI_BASE_URL: ${{ secrets.UMAMI_STABLE_DESKTOP_BASE_URL }}
+
+      - name: Upload artifacts
+        uses: ./.github/actions/desktop-upload-artifacts
+        with:
+          artifact-name: release-${{ matrix.os }}
+
+  # ============================================
+  # 合并 macOS 多架构文件
+  # ============================================
+  merge-mac-files:
+    needs: [build, check-stable]
+    name: Merge macOS Release Files
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: release
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -R release
+
+      - name: Install yaml only for merge step
+        run: |
+          cd scripts/electronWorkflow
+          if [ ! -f package.json ]; then
+            echo '{"name":"merge-mac-release","private":true}' > package.json
+          fi
+          bun add --no-save yaml@2.8.1
+
+      - name: Merge latest-mac.yml files
+        run: bun run scripts/electronWorkflow/mergeMacReleaseFiles.js
+
+      - name: Upload artifacts with merged macOS files
+        uses: actions/upload-artifact@v6
+        with:
+          name: merged-release
+          path: release/
+          retention-days: 1
+
+  # ============================================
+  # 发布到 GitHub Releases
+  # ============================================
+  publish-github:
+    needs: [merge-mac-files, check-stable]
+    name: Publish to GitHub Release
+    runs-on: ubuntu-latest
+    # 手动触发时可选择跳过
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_github_release) }}
+    permissions:
+      contents: write
+    steps:
+      - name: Download merged artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: merged-release
+          path: release
+
+      - name: List final artifacts
+        run: ls -R release
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          # 手动触发时使用输入的版本号创建 tag
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', needs.check-stable.outputs.version) || github.event.release.tag_name }}
+          # 手动触发时创建为 draft
+          draft: ${{ github.event_name == 'workflow_dispatch' }}
+          files: |
+            release/latest*
+            release/*.dmg*
+            release/*.zip*
+            release/*.exe*
+            release/*.AppImage
+            release/*.deb*
+            release/*.snap*
+            release/*.rpm*
+            release/*.tar.gz*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ============================================
+  # 发布到 S3 更新服务器
+  # ============================================
+  # S3 目录结构:
+  #   s3://bucket/
+  #     stable/
+  #       latest-mac.yml      ← electron-updater 检查更新
+  #       latest.yml          ← Windows
+  #       latest-linux.yml    ← Linux
+  #       {version}/          ← 版本目录
+  #         *.dmg, *.zip, *.exe, ...
+  # ============================================
+  publish-s3:
+    needs: [merge-mac-files, check-stable]
+    name: Publish to S3
+    runs-on: ubuntu-latest
+    # 手动触发时可选择跳过
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_s3_upload) }}
+    steps:
+      - name: Download merged artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: merged-release
+          path: release
+
+      - name: List artifacts to upload
+        run: |
+          echo "📦 Artifacts to upload to S3:"
+          ls -lah release/
+          echo ""
+          echo "📋 Version: ${{ needs.check-stable.outputs.version }}"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.UPDATE_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.UPDATE_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.UPDATE_S3_REGION || 'us-east-1' }}
+
+      - name: Upload to S3
+        env:
+          S3_BUCKET: ${{ secrets.UPDATE_S3_BUCKET }}
+          S3_ENDPOINT: ${{ secrets.UPDATE_S3_ENDPOINT }}
+          VERSION: ${{ needs.check-stable.outputs.version }}
+        run: |
+          if [ -z "$S3_BUCKET" ]; then
+            echo "⚠️ UPDATE_S3_BUCKET is not configured, skipping S3 upload"
+            echo ""
+            echo "To enable S3 upload, configure the following secrets:"
+            echo "  - UPDATE_AWS_ACCESS_KEY_ID"
+            echo "  - UPDATE_AWS_SECRET_ACCESS_KEY"
+            echo "  - UPDATE_S3_BUCKET"
+            echo "  - UPDATE_S3_REGION (optional, defaults to us-east-1)"
+            echo "  - UPDATE_S3_ENDPOINT (optional, for S3-compatible services)"
+            exit 0
+          fi
+
+          # 构建端点参数
+          ENDPOINT_ARG=""
+          if [ -n "$S3_ENDPOINT" ]; then
+            ENDPOINT_ARG="--endpoint-url $S3_ENDPOINT"
+            echo "📡 Using custom S3 endpoint: $S3_ENDPOINT"
+          fi
+
+          echo "🚀 Uploading to S3 bucket: $S3_BUCKET"
+          echo "📁 Target path: s3://$S3_BUCKET/stable/"
+          echo ""
+
+          # 1. 上传安装包到版本目录
+          echo "📦 Uploading release files to s3://$S3_BUCKET/stable/$VERSION/"
+          for file in release/*.dmg release/*.zip release/*.exe release/*.AppImage release/*.deb release/*.rpm release/*.snap release/*.tar.gz; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              echo "   ↗️ $filename"
+              aws s3 cp "$file" "s3://$S3_BUCKET/stable/$VERSION/$filename" $ENDPOINT_ARG
+            fi
+          done
+
+          # 2. 上传 manifest 到根目录 (electron-updater 需要)
+          echo ""
+          echo "📋 Uploading manifest files to s3://$S3_BUCKET/stable/"
+          for yml in release/latest*.yml; do
+            if [ -f "$yml" ]; then
+              filename=$(basename "$yml")
+              echo "   ↗️ $filename"
+              aws s3 cp "$yml" "s3://$S3_BUCKET/stable/$filename" $ENDPOINT_ARG
+            fi
+          done
+
+          echo ""
+          echo "✅ S3 upload completed!"
+          echo ""
+          echo "📋 Files in s3://$S3_BUCKET/stable/:"
+          aws s3 ls "s3://$S3_BUCKET/stable/" $ENDPOINT_ARG || true
+          echo ""
+          echo "📋 Files in s3://$S3_BUCKET/stable/$VERSION/:"
+          aws s3 ls "s3://$S3_BUCKET/stable/$VERSION/" $ENDPOINT_ARG || true
