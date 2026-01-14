@@ -112,6 +112,8 @@ jobs:
     if: needs.check-stable.outputs.is_stable == 'true'
     name: Configure Build Matrix
     runs-on: ubuntu-latest
+    permissions:
+      administration: read
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
