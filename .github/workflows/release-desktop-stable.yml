@@ -399,15 +399,18 @@ jobs:
             fi
           done
 
-          # 2. 创建 stable*.yml (从 latest*.yml 复制)
+          # 2. 创建 stable*.yml (从 latest*.yml 复制，并修改 URL 加上版本目录前缀)
           # electron-updater 在 channel=stable 时会找 stable-mac.yml
+          # S3 目录结构: stable/{version}/xxx.dmg，所以 URL 需要加上 {version}/ 前缀
           echo ""
           echo "📋 Creating stable*.yml files from latest*.yml..."
           for yml in release/latest*.yml; do
             if [ -f "$yml" ]; then
               stable_name=$(basename "$yml" | sed 's/latest/stable/')
-              cp "$yml" "release/$stable_name"
-              echo "   📄 Created $stable_name from $(basename $yml)"
+              # 复制并修改 URL: 给所有 url 字段加上版本目录前缀
+              # url: xxx.dmg -> url: {VERSION}/xxx.dmg
+              sed "s|url: |url: $VERSION/|g" "$yml" > "release/$stable_name"
+              echo "   📄 Created $stable_name from $(basename $yml) with URL prefix: $VERSION/"
             fi
           done
 
