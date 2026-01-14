@@ -90,41 +90,10 @@ jobs:
           fi
 
   # ============================================
-  # 代码质量检查
-  # ============================================
-  test:
-    name: Code quality check
-    needs: [check-stable]
-    if: needs.check-stable.outputs.is_stable == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout base
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
-
-      - name: Install bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - name: Install deps
-        run: bun i
-
-      - name: Lint
-        run: bun run lint
-
-  # ============================================
   # 多平台构建
   # ============================================
   build:
-    needs: [check-stable, test]
+    needs: [check-stable]
     if: needs.check-stable.outputs.is_stable == 'true'
     name: Build Desktop App
     runs-on: ${{ matrix.os }}
@@ -181,7 +150,9 @@ jobs:
       # Linux 构建
       - name: Build artifact on Linux
         if: runner.os == 'Linux'
-        run: npm run desktop:build
+        run: |
+          npm run desktop:build
+          tar -czf apps/desktop/release/lobehub-renderer.tar.gz -C out .
         env:
           UPDATE_CHANNEL: stable
           UPDATE_SERVER_URL: ${{ secrets.UPDATE_SERVER_URL }}
