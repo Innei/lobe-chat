@@ -399,8 +399,20 @@ jobs:
             fi
           done
 
-          # 2. 上传 manifest 到根目录 (electron-updater 需要)
-          # 上传 stable*.yml (stable channel) 和 latest*.yml (fallback)
+          # 2. 创建 stable*.yml (从 latest*.yml 复制)
+          # electron-updater 在 channel=stable 时会找 stable-mac.yml
+          echo ""
+          echo "📋 Creating stable*.yml files from latest*.yml..."
+          for yml in release/latest*.yml; do
+            if [ -f "$yml" ]; then
+              stable_name=$(basename "$yml" | sed 's/latest/stable/')
+              cp "$yml" "release/$stable_name"
+              echo "   📄 Created $stable_name from $(basename $yml)"
+            fi
+          done
+
+          # 3. 上传 manifest 到根目录 (electron-updater 需要)
+          # stable*.yml 用于 stable channel，latest*.yml 用于 GitHub fallback
           echo ""
           echo "📋 Uploading manifest files to s3://$S3_BUCKET/stable/"
           for yml in release/stable*.yml release/latest*.yml; do
