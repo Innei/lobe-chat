@@ -84,11 +84,12 @@ export const getDesktopEnv = memoize(() =>
       OFFICIAL_CLOUD_SERVER: z.string().optional().default('https://app.lobehub.com'),
 
       // updater
-      UPDATE_CHANNEL: z.string().optional(),
+      // process.env.xxx will replace in build stage
+      UPDATE_CHANNEL: z.string().optional().default(process.env.UPDATE_CHANNEL),
 
       // Custom update server URL (for stable channel)
       // e.g., https://releases.lobehub.com/stable or https://your-bucket.s3.amazonaws.com/releases
-      UPDATE_SERVER_URL: z.string().optional(),
+      UPDATE_SERVER_URL: z.string().optional().default(process.env.UPDATE_SERVER_URL),
     },
   }),
 );
