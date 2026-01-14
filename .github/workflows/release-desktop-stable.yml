@@ -143,12 +143,12 @@ jobs:
 
           # Windows
           if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] || [[ "${{ inputs.build_windows }}" == "true" ]]; then
-            static_matrix=$(echo "$static_matrix" | jq '. + [{"os": "windows-2025", "name": "windows-2025"}]')
+            static_matrix=$(echo "$static_matrix" | jq -c '. + [{"os": "windows-2025", "name": "windows-2025"}]')
           fi
-          
+
           # Linux
           if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] || [[ "${{ inputs.build_linux }}" == "true" ]]; then
-            static_matrix=$(echo "$static_matrix" | jq '. + [{"os": "ubuntu-latest", "name": "ubuntu-latest"}]')
+            static_matrix=$(echo "$static_matrix" | jq -c '. + [{"os": "ubuntu-latest", "name": "ubuntu-latest"}]')
           fi
 
           # macOS (ARM64)
@@ -160,9 +160,9 @@ jobs:
                echo "Using GitHub-Hosted Runner for macOS ARM64"
                arm_entry='{"os": "macos-14", "name": "macos-arm64"}'
             fi
-            static_matrix=$(echo "$static_matrix" | jq --argjson entry "$arm_entry" '. + [$entry]')
+            static_matrix=$(echo "$static_matrix" | jq -c --argjson entry "$arm_entry" '. + [$entry]')
           fi
-          
+
           # 输出
           echo "matrix={\"include\":$static_matrix}" >> $GITHUB_OUTPUT
 
