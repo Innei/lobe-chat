@@ -69,7 +69,7 @@ export class UpdaterManager {
       logger.info('Dev mode: Using dev-app-update.yml for update configuration');
     } else {
       // Only configure channel and update provider programmatically in production
-      autoUpdater.channel = channel;
+      // Note: channel is configured in configureUpdateProvider based on provider type
       autoUpdater.allowPrerelease = channel !== 'stable';
       logger.info(`Production mode: channel=${channel}, allowPrerelease=${channel !== 'stable'}`);
       this.configureUpdateProvider();
@@ -314,14 +314,19 @@ export class UpdaterManager {
 
   /**
    * Configure update provider based on channel
-   * - Stable channel + UPDATE_SERVER_URL: Use generic HTTP provider (S3) as primary
-   * - Other channels (beta/nightly): Use GitHub provider
+   * - Stable channel + UPDATE_SERVER_URL: Use generic HTTP provider (S3) as primary, channel=stable
+   * - Other channels (beta/nightly) or no S3: Use GitHub provider, channel=latest
+   *
+   * Important: S3 has stable-mac.yml, GitHub has latest-mac.yml
    */
   private configureUpdateProvider() {
     if (isStableChannel && UPDATE_SERVER_URL && !this.usingFallbackProvider) {
       // Stable channel uses custom update server (generic HTTP) as primary
+      // S3 has stable-mac.yml, so we set channel to 'stable'
+      autoUpdater.channel = 'stable';
       logger.info(`Configuring generic provider for stable channel (primary)`);
       logger.info(`Update server URL: ${UPDATE_SERVER_URL}`);
+      logger.info(`Channel set to: stable (will look for stable-mac.yml)`);
 
       autoUpdater.setFeedURL({
         provider: 'generic',
@@ -329,8 +334,11 @@ export class UpdaterManager {
       });
     } else {
       // Beta/nightly channels use GitHub, or fallback to GitHub if UPDATE_SERVER_URL not configured
+      // GitHub releases have latest-mac.yml, so we use default channel (latest)
+      autoUpdater.channel = 'latest';
       const reason = this.usingFallbackProvider ? '(fallback from S3)' : '';
       logger.info(`Configuring GitHub provider for ${channel} channel ${reason}`);
+      logger.info(`Channel set to: latest (will look for latest-mac.yml)`);
 
       autoUpdater.setFeedURL({
         owner: githubConfig.owner,
