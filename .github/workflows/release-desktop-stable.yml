@@ -29,6 +29,21 @@ on:
         description: 'Version to build (e.g., 2.0.0)'
         required: true
         type: string
+      build_mac:
+        description: 'Build macOS (ARM64)'
+        required: false
+        type: boolean
+        default: true
+      build_windows:
+        description: 'Build Windows'
+        required: false
+        type: boolean
+        default: true
+      build_linux:
+        description: 'Build Linux'
+        required: false
+        type: boolean
+        default: true
       skip_s3_upload:
         description: 'Skip S3 upload (for testing)'
         required: false
@@ -90,16 +105,78 @@ jobs:
           fi
 
   # ============================================
+  # 配置构建矩阵 (检查自托管 Runner)
+  # ============================================
+  configure-build:
+    needs: [check-stable]
+    if: needs.check-stable.outputs.is_stable == 'true'
+    name: Configure Build Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Check Self-Hosted Runner
+        id: check-runner
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking self-hosted runner status..."
+          # 尝试获取 Runner 列表，如果失败(如权限不足)则忽略错误，此时 runners 为空，后续逻辑会自动 fallback
+          runners=$(gh api -H "Accept: application/vnd.github+json" /repos/${{ github.repository }}/actions/runners 2>/dev/null || true)
+          
+          # 检查是否存在状态为 online 且包含指定标签的 Runner
+          online_runner=$(echo "$runners" | jq -r '.runners[] | select(.status == "online") | select(.labels | map(.name) | contains(["self-hosted", "macOS", "ARM64"])) | .id' 2>/dev/null | head -n 1)
+          
+          if [ -n "$online_runner" ]; then
+            echo "✅ Found online self-hosted runner (ID: $online_runner)"
+            echo "use_self_hosted=true" >> $GITHUB_ENV
+          else
+            echo "⚠️ No online self-hosted runner found (or API access denied). Falling back to GitHub-hosted runner."
+            echo "use_self_hosted=false" >> $GITHUB_ENV
+          fi
+
+      - name: Generate Matrix
+        id: set-matrix
+        run: |
+          # 基础矩阵
+          static_matrix='[]'
+
+          # Windows
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] || [[ "${{ inputs.build_windows }}" == "true" ]]; then
+            static_matrix=$(echo "$static_matrix" | jq '. + [{"os": "windows-2025", "name": "windows-2025"}]')
+          fi
+          
+          # Linux
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] || [[ "${{ inputs.build_linux }}" == "true" ]]; then
+            static_matrix=$(echo "$static_matrix" | jq '. + [{"os": "ubuntu-latest", "name": "ubuntu-latest"}]')
+          fi
+
+          # macOS (ARM64)
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] || [[ "${{ inputs.build_mac }}" == "true" ]]; then
+            if [ "$use_self_hosted" == "true" ]; then
+               echo "Using Self-Hosted Runner for macOS ARM64"
+               arm_entry='{"os": ["self-hosted", "macOS", "ARM64"], "name": "macos-arm64"}'
+            else
+               echo "Using GitHub-Hosted Runner for macOS ARM64"
+               arm_entry='{"os": "macos-14", "name": "macos-arm64"}'
+            fi
+            static_matrix=$(echo "$static_matrix" | jq --argjson entry "$arm_entry" '. + [$entry]')
+          fi
+          
+          # 输出
+          echo "matrix={\"include\":$static_matrix}" >> $GITHUB_OUTPUT
+
+  # ============================================
   # 多平台构建
   # ============================================
   build:
-    needs: [check-stable]
+    needs: [check-stable, configure-build]
     if: needs.check-stable.outputs.is_stable == 'true'
     name: Build Desktop App
     runs-on: ${{ matrix.os }}
     strategy:
-      matrix:
-        os: [macos-latest, macos-15-intel, windows-2025, ubuntu-latest]
+      fail-fast: false
+      matrix: ${{ fromJson(needs.configure-build.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -165,7 +242,7 @@ jobs:
       - name: Upload artifacts
         uses: ./.github/actions/desktop-upload-artifacts
         with:
-          artifact-name: release-${{ matrix.os }}
+          artifact-name: release-${{ matrix.name }}
 
   # ============================================
   # 合并 macOS 多架构文件
@@ -292,15 +369,11 @@ jobs:
           echo ""
           echo "📋 Version: ${{ needs.check-stable.outputs.version }}"
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.UPDATE_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.UPDATE_AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.UPDATE_S3_REGION || 'us-east-1' }}
-
       - name: Upload to S3
         env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.UPDATE_AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.UPDATE_AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: ${{ secrets.UPDATE_S3_REGION || 'us-east-1' }}
           S3_BUCKET: ${{ secrets.UPDATE_S3_BUCKET }}
           S3_ENDPOINT: ${{ secrets.UPDATE_S3_ENDPOINT }}
           VERSION: ${{ needs.check-stable.outputs.version }}
