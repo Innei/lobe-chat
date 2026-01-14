@@ -3,272 +3,297 @@ import {
   type UpdateInfo,
   useWatchBroadcast,
 } from '@lobechat/electron-client-ipc';
-import { Button } from '@lobehub/ui';
-import { App, Modal, Progress, Spin } from 'antd';
-import React, { memo, useRef, useState } from 'react';
+import { Button, Flexbox, type ModalInstance, createModal } from '@lobehub/ui';
+import { App, Progress, Spin } from 'antd';
+import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { autoUpdateService } from '@/services/electron/autoUpdate';
 import { formatSpeed } from '@/utils/format';
 
-export const UpdateModal = memo(() => {
-  const { t } = useTranslation(['electron', 'common']);
+type UpdateStage = 'checking' | 'available' | 'latest' | 'downloading' | 'downloaded';
 
-  const [isChecking, setIsChecking] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false);
-  // 仅用于手动触发的更新流程（用户从设置页点“检查更新”）
-  const manualFlowRef = useRef(false);
+interface ModalUpdateOptions {
+  closable?: boolean;
+  keyboard?: boolean;
+  maskClosable?: boolean;
+  title?: React.ReactNode;
+}
+
+interface UpdateModalContentProps {
+  onClose: () => void;
+  setModalProps: (props: ModalUpdateOptions) => void;
+}
+
+const UpdateModalContent = memo<UpdateModalContentProps>(({ onClose, setModalProps }) => {
+  const { t } = useTranslation(['electron', 'common']);
+  const { modal } = App.useApp();
+  const errorHandledRef = useRef(false);
+  const isClosingRef = useRef(false);
+
+  const [stage, setStage] = useState<UpdateStage>('checking');
   const [updateAvailableInfo, setUpdateAvailableInfo] = useState<UpdateInfo | null>(null);
   const [downloadedInfo, setDownloadedInfo] = useState<UpdateInfo | null>(null);
   const [progress, setProgress] = useState<ProgressInfo | null>(null);
-  const [latestVersionInfo, setLatestVersionInfo] = useState<UpdateInfo | null>(null); // State for latest version modal
-  const { modal } = App.useApp();
-  // --- Event Listeners ---
+  const [latestVersionInfo, setLatestVersionInfo] = useState<UpdateInfo | null>(null);
 
-  useWatchBroadcast('manualUpdateCheckStart', () => {
-    console.log('[Manual Update] Check Start');
-    manualFlowRef.current = true;
+  useEffect(() => {
+    const isDownloading = stage === 'downloading';
+    const modalTitle = (() => {
+      switch (stage) {
+        case 'checking': {
+          return t('updater.checkingUpdate');
+        }
+        case 'available': {
+          return t('updater.newVersionAvailable');
+        }
+        case 'downloading': {
+          return t('updater.downloadingUpdate');
+        }
+        case 'downloaded': {
+          return t('updater.updateReady');
+        }
+        case 'latest': {
+          return t('updater.isLatestVersion');
+        }
+        default: {
+          return '';
+        }
+      }
+    })();
 
-    setIsChecking(true);
+    setModalProps({
+      closable: !isDownloading,
+      keyboard: !isDownloading,
+      maskClosable: !isDownloading,
+      title: modalTitle,
+    });
+  }, [setModalProps, stage, t]);
+
+  useWatchBroadcast('manualUpdateAvailable', (info: UpdateInfo) => {
+    if (isClosingRef.current) return;
+    setStage('available');
+    setUpdateAvailableInfo(info);
+    setDownloadedInfo(null);
+    setLatestVersionInfo(null);
+  });
+
+  useWatchBroadcast('manualUpdateNotAvailable', (info: UpdateInfo) => {
+    if (isClosingRef.current) return;
+    setStage('latest');
+    setLatestVersionInfo(info);
     setUpdateAvailableInfo(null);
     setDownloadedInfo(null);
     setProgress(null);
-    setLatestVersionInfo(null); // Reset latest version info
-    // Optional: Show a brief notification that check has started
-    // notification.info({ message: t('updater.checking') });
-  });
-
-  useWatchBroadcast('manualUpdateAvailable', (info: UpdateInfo) => {
-    console.log('[Manual Update] Available:', info);
-    // Only react if it's part of a manual check flow (i.e., isChecking was true)
-    // No need to check isChecking here as this event is specific
-    setIsChecking(false);
-    setUpdateAvailableInfo(info);
-  });
-
-  useWatchBroadcast('manualUpdateNotAvailable', (info) => {
-    console.log('[Manual Update] Not Available:', info);
-    // Only react if it's part of a manual check flow
-    // No need to check isChecking here as this event is specific
-    setIsChecking(false);
-    manualFlowRef.current = false;
-
-    setLatestVersionInfo(info); // Set info for the modal
-    // notification.success({
-    //   description: t('updater.isLatestVersionDesc', { version: info.version }),
-    //   message: t('updater.isLatestVersion'),
-    // });
-  });
-
-  useWatchBroadcast('updateError', (message: string) => {
-    console.log('[Manual Update] Error:', message);
-    // Only react if it's part of a manual check/download flow
-    if (isChecking || isDownloading) {
-      setIsChecking(false);
-      setIsDownloading(false);
-      // Show error modal or notification
-      modal.error({ content: message, title: t('updater.updateError') });
-      setLatestVersionInfo(null); // Ensure other modals are closed on error
-      setUpdateAvailableInfo(null);
-      setDownloadedInfo(null);
-      manualFlowRef.current = false;
-    }
   });
 
   useWatchBroadcast('updateDownloadStart', () => {
-    console.log('[Manual Update] Download Start');
-    // This event implies a manual download was triggered (likely from the 'updateAvailable' modal)
-    manualFlowRef.current = true;
-
-    setIsDownloading(true);
-    setUpdateAvailableInfo(null); // Hide the 'download' button modal
-    setProgress({ bytesPerSecond: 0, percent: 0, total: 0, transferred: 0 }); // Reset progress
-    setLatestVersionInfo(null); // Ensure other modals are closed
-    // Optional: Show notification that download started
-    // notification.info({ message: t('updater.downloadingUpdate') });
+    if (isClosingRef.current) return;
+    setStage('downloading');
+    setProgress({ bytesPerSecond: 0, percent: 0, total: 0, transferred: 0 });
+    setUpdateAvailableInfo(null);
+    setLatestVersionInfo(null);
   });
 
   useWatchBroadcast('updateDownloadProgress', (progressInfo: ProgressInfo) => {
-    console.log('[Manual Update] Progress:', progressInfo);
-    // Only update progress if we are in the manual download state
+    if (isClosingRef.current) return;
     setProgress(progressInfo);
   });
 
   useWatchBroadcast('updateDownloaded', (info: UpdateInfo) => {
-    console.log('[Manual Update] Downloaded:', info);
-    // 仅在手动流程里展示阻塞式的“更新就绪”弹窗
-    if (manualFlowRef.current) {
-      setIsChecking(false);
-      setIsDownloading(false);
-      setDownloadedInfo(info);
-      setProgress(null); // Clear progress
-      setLatestVersionInfo(null); // Ensure other modals are closed
-      setUpdateAvailableInfo(null);
-    }
+    if (isClosingRef.current) return;
+    setStage('downloaded');
+    setDownloadedInfo(info);
+    setProgress(null);
+    setUpdateAvailableInfo(null);
+    setLatestVersionInfo(null);
   });
 
-  // --- Render Logic ---
+  useWatchBroadcast('updateError', (message: string) => {
+    if (isClosingRef.current || errorHandledRef.current) return;
+    errorHandledRef.current = true;
+    isClosingRef.current = true;
+    onClose();
+    modal.error({ content: message, title: t('updater.updateError') });
+  });
+
+  const closeModal = () => {
+    if (isClosingRef.current) return;
+    errorHandledRef.current = true;
+    isClosingRef.current = true;
+    onClose();
+  };
 
   const handleDownload = () => {
     if (!updateAvailableInfo) return;
-    // No need to set states here, 'updateDownloadStart' will handle it
     autoUpdateService.downloadUpdate();
   };
 
   const handleInstallNow = () => {
-    setDownloadedInfo(null); // Close modal immediately
     autoUpdateService.installNow();
-    manualFlowRef.current = false;
+    closeModal();
   };
 
   const handleInstallLater = () => {
-    // No need to set state here, 'updateWillInstallLater' handles it
     autoUpdateService.installLater();
-    setDownloadedInfo(null); // Close the modal after clicking
-    manualFlowRef.current = false;
+    closeModal();
   };
 
-  const closeAvailableModal = () => setUpdateAvailableInfo(null);
-  const closeDownloadedModal = () => setDownloadedInfo(null);
-  const closeLatestVersionModal = () => setLatestVersionInfo(null);
-
-  const handleCancelCheck = () => {
-    setIsChecking(false);
-    setUpdateAvailableInfo(null);
-    setDownloadedInfo(null);
-    setProgress(null);
-    setLatestVersionInfo(null);
-    manualFlowRef.current = false;
+  const renderReleaseNotes = (notes?: UpdateInfo['releaseNotes']) => {
+    if (!notes) return null;
+    return (
+      <div
+        dangerouslySetInnerHTML={{ __html: notes as string }}
+        style={{
+          borderRadius: 4,
+          marginTop: 8,
+          maxHeight: 300,
+          overflow: 'auto',
+          padding: '8px 12px',
+        }}
+      />
+    );
   };
 
-  const renderCheckingModal = () => (
-    <Modal
-      closable
-      footer={[
-        <Button key="cancel" onClick={handleCancelCheck}>
+  const renderBody = () => {
+    switch (stage) {
+      case 'checking': {
+        return (
+          <Spin spinning>
+            <div style={{ padding: '20px', textAlign: 'center' }}>
+              {t('updater.checkingUpdateDesc')}
+            </div>
+          </Spin>
+        );
+      }
+      case 'available': {
+        return (
+          <>
+            <h4>
+              {t('updater.newVersionAvailableDesc', { version: updateAvailableInfo?.version })}
+            </h4>
+            {renderReleaseNotes(updateAvailableInfo?.releaseNotes)}
+          </>
+        );
+      }
+      case 'downloading': {
+        const percent = progress ? Math.round(progress.percent) : 0;
+        return (
+          <div style={{ padding: '20px 0' }}>
+            <Progress percent={percent} status="active" />
+            <div style={{ fontSize: 12, marginTop: 8, textAlign: 'center' }}>
+              {t('updater.downloadingUpdateDesc', { percent })}
+              {progress && progress.bytesPerSecond > 0 && (
+                <span>{formatSpeed(progress.bytesPerSecond)}</span>
+              )}
+            </div>
+          </div>
+        );
+      }
+      case 'downloaded': {
+        return (
+          <>
+            <h4>{t('updater.updateReadyDesc', { version: downloadedInfo?.version })}</h4>
+            {renderReleaseNotes(downloadedInfo?.releaseNotes)}
+          </>
+        );
+      }
+      case 'latest': {
+        return <p>{t('updater.isLatestVersionDesc', { version: latestVersionInfo?.version })}</p>;
+      }
+      default: {
+        return null;
+      }
+    }
+  };
+
+  const renderActions = () => {
+    if (stage === 'downloading') return null;
+
+    let actions: React.ReactNode[] = [];
+
+    if (stage === 'checking') {
+      actions = [
+        <Button key="cancel" onClick={closeModal}>
           {t('cancel', { ns: 'common' })}
         </Button>,
-      ]}
-      onCancel={handleCancelCheck}
-      open={isChecking}
-      title={t('updater.checkingUpdate')}
-    >
-      <Spin spinning={true}>
-        <div style={{ padding: '20px', textAlign: 'center' }}>
-          {t('updater.checkingUpdateDesc')}
-        </div>
-      </Spin>
-    </Modal>
-  );
+      ];
+    }
 
-  const renderAvailableModal = () => (
-    <Modal
-      footer={[
-        <Button key="cancel" onClick={closeAvailableModal}>
+    if (stage === 'available') {
+      actions = [
+        <Button key="cancel" onClick={closeModal}>
           {t('cancel', { ns: 'common' })}
         </Button>,
         <Button key="download" onClick={handleDownload} type="primary">
           {t('updater.downloadNewVersion')}
         </Button>,
-      ]}
-      onCancel={closeAvailableModal}
-      open={!!updateAvailableInfo}
-      title={t('updater.newVersionAvailable')}
-    >
-      <h4>{t('updater.newVersionAvailableDesc', { version: updateAvailableInfo?.version })}</h4>
-      {updateAvailableInfo?.releaseNotes && (
-        <div
-          dangerouslySetInnerHTML={{ __html: updateAvailableInfo.releaseNotes as string }}
-          style={{
-            // background:theme
-            borderRadius: 4,
-            marginTop: 8,
-            maxHeight: 300,
-            overflow: 'auto',
-            padding: '8px 12px',
-          }}
-        />
-      )}
-    </Modal>
-  );
+      ];
+    }
 
-  const renderDownloadingModal = () => {
-    const percent = progress ? Math.round(progress.percent) : 0;
-    return (
-      <Modal
-        closable={false}
-        footer={null}
-        maskClosable={false}
-        open={isDownloading && !downloadedInfo}
-        title={t('updater.downloadingUpdate')}
-      >
-        <div style={{ padding: '20px 0' }}>
-          <Progress percent={percent} status="active" />
-          <div style={{ fontSize: 12, marginTop: 8, textAlign: 'center' }}>
-            {t('updater.downloadingUpdateDesc', { percent })}
-            {progress && progress.bytesPerSecond > 0 && (
-              <span>{formatSpeed(progress.bytesPerSecond)}</span>
-            )}
-          </div>
-        </div>
-      </Modal>
-    );
-  };
-
-  const renderDownloadedModal = () => (
-    <Modal
-      footer={[
+    if (stage === 'downloaded') {
+      actions = [
         <Button key="later" onClick={handleInstallLater}>
           {t('updater.installLater')}
         </Button>,
         <Button key="now" onClick={handleInstallNow} type="primary">
           {t('updater.restartAndInstall')}
         </Button>,
-      ]}
-      onCancel={closeDownloadedModal} // Allow closing if they don't want to decide now
-      open={!!downloadedInfo}
-      title={t('updater.updateReady')}
-    >
-      <h4>{t('updater.updateReadyDesc', { version: downloadedInfo?.version })}</h4>
-      {downloadedInfo?.releaseNotes && (
-        <div
-          dangerouslySetInnerHTML={{ __html: downloadedInfo.releaseNotes as string }}
-          style={{
-            borderRadius: 4,
-            marginTop: 8,
-            maxHeight: 300,
-            overflow: 'auto',
-            padding: '8px 12px',
-          }}
-        />
-      )}
-    </Modal>
-  );
+      ];
+    }
 
-  // New modal for "latest version"
-  const renderLatestVersionModal = () => (
-    <Modal
-      footer={[
-        <Button key="ok" onClick={closeLatestVersionModal} type="primary">
+    if (stage === 'latest') {
+      actions = [
+        <Button key="ok" onClick={closeModal} type="primary">
           {t('ok', { ns: 'common' })}
         </Button>,
-      ]}
-      onCancel={closeLatestVersionModal}
-      open={!!latestVersionInfo}
-      title={t('updater.isLatestVersion')}
-    >
-      <p>{t('updater.isLatestVersionDesc', { version: latestVersionInfo?.version })}</p>
-    </Modal>
-  );
+      ];
+    }
+
+    if (actions.length === 0) return null;
+
+    return (
+      <Flexbox gap={8} horizontal justify="end">
+        {actions}
+      </Flexbox>
+    );
+  };
 
   return (
-    <>
-      {renderCheckingModal()}
-      {renderAvailableModal()}
-      {renderDownloadingModal()}
-      {renderDownloadedModal()}
-      {renderLatestVersionModal()}
-      {/* Error state is handled by Modal.error currently */}
-    </>
+    <Flexbox gap={16} style={{ padding: 16 }}>
+      <div>{renderBody()}</div>
+      {renderActions()}
+    </Flexbox>
   );
 });
+
+UpdateModalContent.displayName = 'UpdateModalContent';
+
+interface UpdateModalOpenProps {
+  onAfterClose?: () => void;
+}
+
+export const useUpdateModal = () => {
+  const instanceRef = useRef<ModalInstance | null>(null);
+
+  const open = useCallback((props?: UpdateModalOpenProps) => {
+    const setModalProps = (nextProps: ModalUpdateOptions) => {
+      instanceRef.current?.update?.(nextProps);
+    };
+
+    const handleClose = () => {
+      instanceRef.current?.close();
+    };
+
+    instanceRef.current = createModal({
+      afterClose: props?.onAfterClose,
+      children: <UpdateModalContent onClose={handleClose} setModalProps={setModalProps} />,
+      footer: null,
+      keyboard: true,
+      maskClosable: true,
+      title: '',
+    });
+  }, []);
+
+  return { open };
+};
