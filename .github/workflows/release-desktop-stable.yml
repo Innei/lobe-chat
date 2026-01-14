@@ -311,6 +311,7 @@ jobs:
           # 手动触发时创建为 draft
           draft: ${{ github.event_name == 'workflow_dispatch' }}
           files: |
+            release/stable*
             release/latest*
             release/*.dmg*
             release/*.zip*
@@ -329,9 +330,10 @@ jobs:
   # S3 目录结构:
   #   s3://bucket/
   #     stable/
-  #       latest-mac.yml      ← electron-updater 检查更新
-  #       latest.yml          ← Windows
-  #       latest-linux.yml    ← Linux
+  #       stable-mac.yml      ← electron-updater 检查更新 (stable channel)
+  #       stable.yml          ← Windows (stable channel)
+  #       stable-linux.yml    ← Linux (stable channel)
+  #       latest-mac.yml      ← fallback for GitHub provider
   #       {version}/          ← 版本目录
   #         *.dmg, *.zip, *.exe, ...
   # ============================================
@@ -398,9 +400,10 @@ jobs:
           done
 
           # 2. 上传 manifest 到根目录 (electron-updater 需要)
+          # 上传 stable*.yml (stable channel) 和 latest*.yml (fallback)
           echo ""
           echo "📋 Uploading manifest files to s3://$S3_BUCKET/stable/"
-          for yml in release/latest*.yml; do
+          for yml in release/stable*.yml release/latest*.yml; do
             if [ -f "$yml" ]; then
               filename=$(basename "$yml")
               echo "   ↗️ $filename"

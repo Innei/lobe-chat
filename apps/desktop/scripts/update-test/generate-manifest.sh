@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # ============================================
-# 生成更新 manifest 文件 (latest-mac.yml 等)
+# 生成更新 manifest 文件 ({channel}-mac.yml)
 #
 # 目录结构:
 #   server/
 #     {channel}/
-#       latest-mac.yml
+#       {channel}-mac.yml  (e.g., stable-mac.yml)
 #       {version}/
 #         xxx.dmg
 #         xxx.zip
@@ -48,7 +48,7 @@ show_help() {
     echo "生成的目录结构:"
     echo "  server/"
     echo "    {channel}/"
-    echo "      latest-mac.yml"
+    echo "      {channel}-mac.yml  (e.g., stable-mac.yml)"
     echo "      {version}/"
     echo "        xxx.dmg"
     echo "        xxx.zip"
@@ -202,9 +202,10 @@ if [ -z "$RELEASE_NOTES" ]; then
 - 本地测试环境配置"
 fi
 
-# 生成 latest-mac.yml
+# 生成 {channel}-mac.yml (e.g., stable-mac.yml)
+MANIFEST_FILE="$CHANNEL-mac.yml"
 echo ""
-echo "📝 生成 $CHANNEL/latest-mac.yml..."
+echo "📝 生成 $CHANNEL/$MANIFEST_FILE..."
 
 DMG_SHA512=""
 DMG_SIZE="0"
@@ -223,14 +224,14 @@ if [ -n "$ZIP_FILE" ] && [ -f "$VERSION_DIR/$ZIP_FILE" ]; then
     ZIP_SIZE=$(get_file_size "$VERSION_DIR/$ZIP_FILE")
 fi
 
-# 写入 latest-mac.yml (放在渠道目录下)
-cat > "$CHANNEL_DIR/latest-mac.yml" << EOF
+# 写入 manifest 文件 (放在渠道目录下)
+cat > "$CHANNEL_DIR/$MANIFEST_FILE" << EOF
 version: $VERSION
 files:
 EOF
 
 if [ -n "$DMG_FILE" ]; then
-cat >> "$CHANNEL_DIR/latest-mac.yml" << EOF
+cat >> "$CHANNEL_DIR/$MANIFEST_FILE" << EOF
   - url: $VERSION/$DMG_FILE
     sha512: ${DMG_SHA512:-placeholder}
     size: $DMG_SIZE
@@ -238,14 +239,14 @@ EOF
 fi
 
 if [ -n "$ZIP_FILE" ]; then
-cat >> "$CHANNEL_DIR/latest-mac.yml" << EOF
+cat >> "$CHANNEL_DIR/$MANIFEST_FILE" << EOF
   - url: $VERSION/$ZIP_FILE
     sha512: ${ZIP_SHA512:-placeholder}
     size: $ZIP_SIZE
 EOF
 fi
 
-cat >> "$CHANNEL_DIR/latest-mac.yml" << EOF
+cat >> "$CHANNEL_DIR/$MANIFEST_FILE" << EOF
 path: $VERSION/${DMG_FILE:-LobeHub-$VERSION-arm64.dmg}
 sha512: ${DMG_SHA512:-placeholder}
 releaseDate: '$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")'
@@ -253,13 +254,13 @@ releaseNotes: |
 $(echo "$RELEASE_NOTES" | sed 's/^/  /')
 EOF
 
-echo "✅ 已生成 $CHANNEL_DIR/latest-mac.yml"
+echo "✅ 已生成 $CHANNEL_DIR/$MANIFEST_FILE"
 
 # 显示生成的文件内容
 echo ""
 echo "📋 文件内容:"
 echo "----------------------------------------"
-cat "$CHANNEL_DIR/latest-mac.yml"
+cat "$CHANNEL_DIR/$MANIFEST_FILE"
 echo "----------------------------------------"
 
 # 显示目录结构

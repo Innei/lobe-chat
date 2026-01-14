@@ -13,5 +13,6 @@ provider: generic
 url: http://localhost:8787/stable
 updaterCacheDirName: lobehub-desktop-local-test
 
-# 重要：不要设置 channel，否则会找 {channel}-mac.yml 而不是 latest-mac.yml
-# 默认 channel 是 "latest"，会找 latest-mac.yml
+# 设置 channel 为 stable 以匹配生产环境行为
+# stable channel 会找 stable-mac.yml
+channel: stable

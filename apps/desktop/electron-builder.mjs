@@ -159,6 +159,10 @@ const config = {
   // Native modules must be unpacked from asar to work correctly
   asarUnpack: getAsarUnpackPatterns(),
 
+  // Set channel for stable builds to generate stable-mac.yml instead of latest-mac.yml
+  // This ensures electron-updater looks for the correct manifest file
+  channel: isStable ? 'stable' : undefined,
+
   detectUpdateChannel: true,
 
   directories: {
