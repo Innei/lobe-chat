@@ -414,7 +414,29 @@ jobs:
             fi
           done
 
-          # 3. 上传 manifest 到根目录 (electron-updater 需要)
+          # 3. 创建 renderer manifest (用于验证 renderer tar 完整性)
+          echo ""
+          echo "📋 Creating renderer manifest..."
+          RENDERER_TAR="release/lobehub-renderer.tar.gz"
+          if [ -f "$RENDERER_TAR" ]; then
+            RENDERER_SHA512=$(shasum -a 512 "$RENDERER_TAR" | awk '{print $1}' | xxd -r -p | base64)
+            RENDERER_SIZE=$(stat -f%z "$RENDERER_TAR" 2>/dev/null || stat -c%s "$RENDERER_TAR")
+            cat > "release/stable-renderer.yml" << EOF
+version: $VERSION
+files:
+  - url: $VERSION/lobehub-renderer.tar.gz
+    sha512: $RENDERER_SHA512
+    size: $RENDERER_SIZE
+path: $VERSION/lobehub-renderer.tar.gz
+sha512: $RENDERER_SHA512
+releaseDate: '$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")'
+EOF
+            echo "   📄 Created stable-renderer.yml with SHA512 checksum"
+          else
+            echo "   ⚠️ Renderer tar not found, skipping manifest creation"
+          fi
+
+          # 4. 上传 manifest 到根目录 (electron-updater 需要)
           # stable*.yml 用于 stable channel，latest*.yml 用于 GitHub fallback
           echo ""
           echo "📋 Uploading manifest files to s3://$S3_BUCKET/stable/"
