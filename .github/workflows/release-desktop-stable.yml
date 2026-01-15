@@ -421,16 +421,15 @@ jobs:
           if [ -f "$RENDERER_TAR" ]; then
             RENDERER_SHA512=$(shasum -a 512 "$RENDERER_TAR" | awk '{print $1}' | xxd -r -p | base64)
             RENDERER_SIZE=$(stat -f%z "$RENDERER_TAR" 2>/dev/null || stat -c%s "$RENDERER_TAR")
-            cat > "release/stable-renderer.yml" << EOF
-version: $VERSION
-files:
-  - url: $VERSION/lobehub-renderer.tar.gz
-    sha512: $RENDERER_SHA512
-    size: $RENDERER_SIZE
-path: $VERSION/lobehub-renderer.tar.gz
-sha512: $RENDERER_SHA512
-releaseDate: '$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")'
-EOF
+            RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")
+            echo "version: $VERSION" > "release/stable-renderer.yml"
+            echo "files:" >> "release/stable-renderer.yml"
+            echo "  - url: $VERSION/lobehub-renderer.tar.gz" >> "release/stable-renderer.yml"
+            echo "    sha512: $RENDERER_SHA512" >> "release/stable-renderer.yml"
+            echo "    size: $RENDERER_SIZE" >> "release/stable-renderer.yml"
+            echo "path: $VERSION/lobehub-renderer.tar.gz" >> "release/stable-renderer.yml"
+            echo "sha512: $RENDERER_SHA512" >> "release/stable-renderer.yml"
+            echo "releaseDate: '$RELEASE_DATE'" >> "release/stable-renderer.yml"
             echo "   📄 Created stable-renderer.yml with SHA512 checksum"
           else
             echo "   ⚠️ Renderer tar not found, skipping manifest creation"
