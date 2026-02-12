@@ -1,9 +1,12 @@
-import { TITLE_BAR_HEIGHT } from '@lobechat/desktop-bridge';
-import { BrowserWindow, BrowserWindowConstructorOptions, nativeTheme } from 'electron';
 import { join } from 'node:path';
+
+import { TITLE_BAR_HEIGHT } from '@lobechat/desktop-bridge';
+import { type BrowserWindow, type BrowserWindowConstructorOptions, nativeTheme } from 'electron';
 
 import { buildDir } from '@/const/dir';
 import { isDev, isMac, isMacTahoe, isWindows } from '@/const/env';
+import { createLogger } from '@/utils/logger';
+
 import {
   BACKGROUND_DARK,
   BACKGROUND_LIGHT,
@@ -11,7 +14,6 @@ import {
   SYMBOL_COLOR_LIGHT,
   THEME_CHANGE_DELAY,
 } from '../../const/theme';
-import { createLogger } from '@/utils/logger';
 
 const logger = createLogger('core:WindowThemeManager');
 
@@ -260,7 +262,7 @@ export class WindowThemeManager {
       const handle = this.browserWindow.getNativeWindowHandle();
 
       this.liquidGlassViewId = liquidGlass.addView(handle);
-      liquidGlass.unstable_setVariant(this.liquidGlassViewId, 2);
+      liquidGlass.unstable_setVariant(this.liquidGlassViewId, 15);
 
       logger.info(`[${this.identifier}] Liquid glass applied (viewId: ${this.liquidGlassViewId})`);
     } catch (error) {
