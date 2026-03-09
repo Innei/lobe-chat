@@ -1,0 +1,31 @@
+import { useLexicalComposerContext } from '@lobehub/editor';
+import { type FC, useLayoutEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import ActionTag from './ActionTag';
+import { ActionTagPlugin } from './ActionTagPlugin';
+import { actionTagTheme } from './style';
+
+const ReactActionTagPlugin: FC = () => {
+  const [editor] = useLexicalComposerContext();
+  const { t } = useTranslation('editor');
+
+  useLayoutEffect(() => {
+    (editor as any).registerPlugin(ActionTagPlugin, {
+      decorator: (node: any, lexicalEditor: any) => (
+        <ActionTag
+          editor={lexicalEditor}
+          label={t(`slash.${node.actionType}` as any)}
+          node={node}
+        />
+      ),
+      theme: actionTagTheme,
+    });
+  }, [editor, t]);
+
+  return null;
+};
+
+ReactActionTagPlugin.displayName = 'ReactActionTagPlugin';
+
+export default ReactActionTagPlugin;
