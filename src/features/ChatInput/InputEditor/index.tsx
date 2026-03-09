@@ -3,23 +3,19 @@ import { HotkeyEnum, KeyEnum } from '@lobechat/types';
 import { isCommandPressed } from '@lobechat/utils';
 import {
   INSERT_MENTION_COMMAND,
-  INSERT_TABLE_COMMAND,
   ReactCodemirrorPlugin,
   ReactCodePlugin,
   ReactHRPlugin,
   ReactLinkHighlightPlugin,
   ReactListPlugin,
   ReactMathPlugin,
-  ReactTablePlugin,
   ReactVirtualBlockPlugin,
 } from '@lobehub/editor';
 import { Editor, FloatMenu, SlashMenu, useEditorState } from '@lobehub/editor/react';
 import { combineKeys } from '@lobehub/ui';
 import { css, cx } from 'antd-style';
-import { Table2Icon } from 'lucide-react';
-import { memo, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useHotkeysContext } from 'react-hotkeys-hook';
-import { useTranslation } from 'react-i18next';
 
 import { usePasteFile, useUploadFiles } from '@/components/DragUploadZone';
 import { useAgentStore } from '@/store/agent';
@@ -29,6 +25,7 @@ import { labPreferSelectors, preferenceSelectors, settingsSelectors } from '@/st
 
 import { useAgentId } from '../hooks/useAgentId';
 import { useChatInputStore, useStoreApi } from '../store';
+import { ReactActionTagPlugin, useSlashActionItems } from './ActionTag';
 import Placeholder from './Placeholder';
 
 const className = cx(css`
@@ -52,7 +49,6 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
   const state = useEditorState(editor);
   const hotkey = useUserStore(settingsSelectors.getHotkeyById(HotkeyEnum.AddUserMessage));
   const { enableScope, disableScope } = useHotkeysContext();
-  const { t } = useTranslation(['editor', 'chat']);
 
   const isChineseInput = useRef(false);
 
@@ -85,12 +81,25 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
 
   const enableRichRender = useUserStore(labPreferSelectors.enableInputMarkdown);
 
+  const slashActionItems = useSlashActionItems();
+  const slashItems = useCallback(
+    async (
+      search: { leadOffset: number; matchingString: string; replaceableString: string } | null,
+    ) => {
+      const actionItems =
+        typeof slashActionItems === 'function' ? await slashActionItems(search) : slashActionItems;
+      return actionItems;
+    },
+    [slashActionItems],
+  );
+
   const richRenderProps = useMemo(
     () =>
       !enableRichRender
         ? {
             enablePasteMarkdown: false,
             markdownOption: false,
+            plugins: [ReactActionTagPlugin],
           }
         : {
             plugins: [
@@ -99,7 +108,6 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
               ReactCodemirrorPlugin,
               ReactHRPlugin,
               ReactLinkHighlightPlugin,
-              ReactTablePlugin,
               ReactVirtualBlockPlugin,
               Editor.withProps(ReactMathPlugin, {
                 renderComp: expand
@@ -111,9 +119,10 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
                       />
                     ),
               }),
+              ReactActionTagPlugin,
             ],
           },
-    [enableRichRender],
+    [enableRichRender, expand, slashMenuRef],
   );
 
   return (
@@ -154,16 +163,7 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
           : undefined
       }
       slashOption={{
-        items: [
-          {
-            icon: Table2Icon,
-            key: 'table',
-            label: t('typobar.table'),
-            onSelect: (editor) => {
-              editor.dispatchCommand(INSERT_TABLE_COMMAND, { columns: '3', rows: '3' });
-            },
-          },
-        ],
+        items: slashItems,
         renderComp: expand
           ? undefined
           : (props) => {
