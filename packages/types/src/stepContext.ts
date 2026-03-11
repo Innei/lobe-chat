@@ -90,6 +90,21 @@ export interface RuntimeSelectedSkill {
 }
 
 /**
+ * User-selected tool context for the current request
+ * Captured from slash-menu tool action tags before send
+ */
+export interface RuntimeSelectedTool {
+  /**
+   * Tool identifier used by runtime/tooling
+   */
+  identifier: string;
+  /**
+   * Human-readable tool name shown in the input UI
+   */
+  name: string;
+}
+
+/**
  * Runtime Step Context
  *
  * Contains dynamically computed state that changes between steps.
@@ -144,4 +159,9 @@ export interface RuntimeInitialContext {
    * This is ephemeral runtime context and is not persisted to chat history
    */
   selectedSkills?: RuntimeSelectedSkill[];
+  /**
+   * Tools explicitly selected by the user for the current request
+   * This constrains the available tools for the current runtime execution
+   */
+  selectedTools?: RuntimeSelectedTool[];
 }
