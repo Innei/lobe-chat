@@ -1,18 +1,8 @@
 import { isDesktop } from '@lobechat/const';
 import { HotkeyEnum, KeyEnum } from '@lobechat/types';
 import { isCommandPressed } from '@lobechat/utils';
-import {
-  INSERT_MENTION_COMMAND,
-  ReactCodemirrorPlugin,
-  ReactCodePlugin,
-  ReactHRPlugin,
-  ReactLinkHighlightPlugin,
-  ReactListPlugin,
-  ReactMathPlugin,
-  ReactVirtualBlockPlugin,
-  type SlashOptions,
-} from '@lobehub/editor';
-import { Editor, FloatMenu, SlashMenu, useEditorState } from '@lobehub/editor/react';
+import { INSERT_MENTION_COMMAND, ReactMathPlugin, type SlashOptions } from '@lobehub/editor';
+import { Editor, FloatMenu, useEditorState } from '@lobehub/editor/react';
 import { combineKeys } from '@lobehub/ui';
 import { css, cx } from 'antd-style';
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -26,9 +16,11 @@ import { labPreferSelectors, preferenceSelectors, settingsSelectors } from '@/st
 
 import { useAgentId } from '../hooks/useAgentId';
 import { useChatInputStore, useStoreApi } from '../store';
-import { ReactActionTagPlugin, useSlashActionItems } from './ActionTag';
+import { useSlashActionItems } from './ActionTag';
 import Placeholder from './Placeholder';
-import { INSERT_REFER_TOPIC_COMMAND, ReactReferTopicPlugin } from './ReferTopic';
+import { CHAT_INPUT_EMBED_PLUGINS, createChatInputRichPlugins } from './plugins';
+import { INSERT_REFER_TOPIC_COMMAND } from './ReferTopic';
+import { useAgentMentionItems } from './useAgentMentionItems';
 import { useTopicMentionItems } from './useTopicMentionItems';
 
 const className = cx(css`
@@ -59,22 +51,27 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
   const useCmdEnterToSend = useUserStore(preferenceSelectors.useCmdEnterToSend);
 
   const topicMentionItems = useTopicMentionItems();
+  const agentMentionItems = useAgentMentionItems();
 
   const mergedMentionItems = useMemo<SlashOptions['items'] | undefined>(() => {
     const topicItems = topicMentionItems || [];
-    if (!mentionItems && topicItems.length === 0) return undefined;
+    // In non-group context, use agent items from hook; in group context, use injected mentionItems
+    const fallbackAgentItems = !mentionItems ? agentMentionItems : [];
+
+    if (!mentionItems && fallbackAgentItems.length === 0 && topicItems.length === 0)
+      return undefined;
 
     if (typeof mentionItems === 'function') {
       const fn = mentionItems;
       return async (search: Parameters<typeof fn>[0]) => {
-        const agentItems = await fn(search);
-        return [...agentItems, ...topicItems];
+        const groupItems = await fn(search);
+        return [...groupItems, ...topicItems];
       };
     }
 
-    const agentItems = Array.isArray(mentionItems) ? mentionItems : [];
-    return [...agentItems, ...topicItems];
-  }, [mentionItems, topicMentionItems]);
+    const externalItems = Array.isArray(mentionItems) ? mentionItems : [];
+    return [...externalItems, ...fallbackAgentItems, ...topicItems];
+  }, [mentionItems, topicMentionItems, agentMentionItems]);
 
   const enableMention =
     !!mergedMentionItems &&
@@ -124,17 +121,11 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
         ? {
             enablePasteMarkdown: false,
             markdownOption: false,
-            plugins: [ReactActionTagPlugin, ReactReferTopicPlugin],
+            plugins: CHAT_INPUT_EMBED_PLUGINS,
           }
         : {
-            plugins: [
-              ReactListPlugin,
-              ReactCodePlugin,
-              ReactCodemirrorPlugin,
-              ReactHRPlugin,
-              ReactLinkHighlightPlugin,
-              ReactVirtualBlockPlugin,
-              Editor.withProps(ReactMathPlugin, {
+            plugins: createChatInputRichPlugins({
+              mathPlugin: Editor.withProps(ReactMathPlugin, {
                 renderComp: expand
                   ? undefined
                   : (props) => (
@@ -144,9 +135,7 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
                       />
                     ),
               }),
-              ReactActionTagPlugin,
-              ReactReferTopicPlugin,
-            ],
+            }),
           },
     [enableRichRender, expand, slashMenuRef],
   );
@@ -186,16 +175,6 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
                   });
                 }
               },
-              renderComp: expand
-                ? undefined
-                : (props) => {
-                    return (
-                      <SlashMenu
-                        {...props}
-                        getPopupContainer={() => (slashMenuRef as any)?.current}
-                      />
-                    );
-                  },
             }
           : undefined
       }

@@ -143,12 +143,28 @@ export interface RuntimeStepContext {
 }
 
 /**
+ * Agent mentioned by the user via @ in the input editor
+ */
+export interface RuntimeMentionedAgent {
+  /** Agent ID */
+  id: string;
+  /** Agent display name */
+  name: string;
+}
+
+/**
  * Initial Context
  *
  * Contains state captured at operation initialization.
  * Remains constant throughout the operation lifecycle.
  */
 export interface RuntimeInitialContext {
+  /**
+   * Agents explicitly @mentioned by the user in the input editor.
+   * When present in a non-group conversation, the current agent acts as
+   * supervisor and can delegate to the mentioned agents via callAgent.
+   */
+  mentionedAgents?: RuntimeMentionedAgent[];
   /**
    * Initial Page Editor context
    * Contains markdown content and metadata captured at operation start

@@ -717,6 +717,131 @@ describe('ConversationLifecycle actions', () => {
       });
     });
 
+    describe('@agent mention delegation', () => {
+      it('should NOT set isSupervisor on assistant message when @agent is mentioned in non-group chat', async () => {
+        const { result } = renderHook(() => useChatStore());
+
+        const sendMessageInServerSpy = vi
+          .spyOn(aiChatService, 'sendMessageInServer')
+          .mockResolvedValue({
+            messages: [
+              createMockMessage({ id: TEST_IDS.USER_MESSAGE_ID, role: 'user' }),
+              createMockMessage({ id: TEST_IDS.ASSISTANT_MESSAGE_ID, role: 'assistant' }),
+            ],
+            topics: [],
+            assistantMessageId: TEST_IDS.ASSISTANT_MESSAGE_ID,
+            userMessageId: TEST_IDS.USER_MESSAGE_ID,
+          } as any);
+
+        await act(async () => {
+          await result.current.sendMessage({
+            message: '@Agent A hello',
+            editorData: {
+              root: {
+                children: [
+                  {
+                    children: [
+                      {
+                        label: 'Agent A',
+                        metadata: { id: 'agent-a', type: 'agent' },
+                        type: 'mention',
+                      },
+                      { text: ' hello', type: 'text' },
+                    ],
+                    type: 'paragraph',
+                  },
+                ],
+                type: 'root',
+              },
+            } as any,
+            // Non-group context: no groupId
+            context: createTestContext(),
+          });
+        });
+
+        // Assistant message metadata should NOT contain isSupervisor
+        expect(sendMessageInServerSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            newAssistantMessage: expect.objectContaining({
+              metadata: undefined,
+            }),
+          }),
+          expect.any(AbortController),
+        );
+
+        // But runtime should receive mentionedAgents in initialContext
+        expect(result.current.internal_execAgentRuntime).toHaveBeenCalledWith(
+          expect.objectContaining({
+            initialContext: expect.objectContaining({
+              initialContext: expect.objectContaining({
+                mentionedAgents: [{ id: 'agent-a', name: 'Agent A' }],
+              }),
+            }),
+          }),
+        );
+      });
+
+      it('should NOT inject mentionedAgents into initialContext when in group chat', async () => {
+        const { result } = renderHook(() => useChatStore());
+
+        // Mock group store so groupId resolves
+        vi.spyOn(agentGroupStore, 'getChatGroupStoreState').mockReturnValue({
+          groupMap: {
+            'test-group': {
+              id: 'test-group',
+              supervisorAgentId: 'supervisor-id',
+            },
+          },
+        } as any);
+
+        vi.spyOn(aiChatService, 'sendMessageInServer').mockResolvedValue({
+          messages: [
+            createMockMessage({ id: TEST_IDS.USER_MESSAGE_ID, role: 'user' }),
+            createMockMessage({ id: TEST_IDS.ASSISTANT_MESSAGE_ID, role: 'assistant' }),
+          ],
+          topics: [],
+          assistantMessageId: TEST_IDS.ASSISTANT_MESSAGE_ID,
+          userMessageId: TEST_IDS.USER_MESSAGE_ID,
+        } as any);
+
+        await act(async () => {
+          await result.current.sendMessage({
+            message: '@Agent A in group',
+            editorData: {
+              root: {
+                children: [
+                  {
+                    children: [
+                      {
+                        label: 'Agent A',
+                        metadata: { id: 'agent-a', type: 'agent' },
+                        type: 'mention',
+                      },
+                      { text: ' in group', type: 'text' },
+                    ],
+                    type: 'paragraph',
+                  },
+                ],
+                type: 'root',
+              },
+            } as any,
+            // Group context
+            context: {
+              agentId: 'sub-agent-id',
+              groupId: 'test-group',
+              topicId: null,
+              threadId: null,
+            },
+          });
+        });
+
+        // Runtime should NOT receive mentionedAgents in group context
+        const execCall = (result.current.internal_execAgentRuntime as any).mock.calls[0]?.[0];
+        const initialCtx = execCall?.initialContext?.initialContext;
+        expect(initialCtx?.mentionedAgents).toBeUndefined();
+      });
+    });
+
     describe('new topic creation cleanup', () => {
       it('should clear _new key data when new topic is created', async () => {
         const { result } = renderHook(() => useChatStore());

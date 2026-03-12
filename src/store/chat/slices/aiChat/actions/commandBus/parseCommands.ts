@@ -1,4 +1,8 @@
-import type { RuntimeSelectedSkill, RuntimeSelectedTool } from '@lobechat/types';
+import type {
+  RuntimeMentionedAgent,
+  RuntimeSelectedSkill,
+  RuntimeSelectedTool,
+} from '@lobechat/types';
 
 import type {
   ActionTagCategory,
@@ -80,6 +84,31 @@ export const parseSelectedToolsFromEditorData = (
 };
 
 /**
+ * Walk the editor JSON tree to find all mention nodes (type: 'mention')
+ * and extract agent info from their metadata.
+ */
+export const parseMentionedAgentsFromEditorData = (
+  editorData: Record<string, any> | undefined,
+): RuntimeMentionedAgent[] => {
+  if (!editorData) return [];
+
+  const agents: RuntimeMentionedAgent[] = [];
+  const seen = new Set<string>();
+
+  walkMentionNode(editorData.root, (label, metadata) => {
+    // Only accept explicit agent mentions — skip topics, ALL_MEMBERS, and other types
+    if (metadata?.type !== 'agent') return;
+    const id = metadata?.id as string | undefined;
+    if (!id || seen.has(id)) return;
+
+    seen.add(id);
+    agents.push({ id, name: label || id });
+  });
+
+  return agents;
+};
+
+/**
  * Check if editorData contains any meaningful text content
  * besides action-tag nodes (whitespace-only counts as empty).
  */
@@ -99,6 +128,21 @@ function collectText(node: any, out: string[]): void {
   if (Array.isArray(node.children)) {
     for (const child of node.children) {
       collectText(child, out);
+    }
+  }
+}
+
+function walkMentionNode(
+  node: any,
+  cb: (label: string, metadata: Record<string, unknown>) => void,
+): void {
+  if (!node) return;
+  if (node.type === 'mention' && node.metadata) {
+    cb(node.label ?? '', node.metadata);
+  }
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) {
+      walkMentionNode(child, cb);
     }
   }
 }

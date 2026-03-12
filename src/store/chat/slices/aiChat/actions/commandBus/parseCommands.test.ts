@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   parseCommandsFromEditorData,
+  parseMentionedAgentsFromEditorData,
   parseSelectedSkillsFromEditorData,
   parseSelectedToolsFromEditorData,
 } from './parseCommands';
@@ -260,6 +261,242 @@ describe('parseSelectedToolsFromEditorData', () => {
 
     expect(parseSelectedToolsFromEditorData(editorData)).toEqual([
       { identifier: 'lobe-notebook', name: 'Notebook' },
+    ]);
+  });
+});
+
+describe('parseMentionedAgentsFromEditorData', () => {
+  it('should return empty array for undefined editorData', () => {
+    expect(parseMentionedAgentsFromEditorData(undefined)).toEqual([]);
+  });
+
+  it('should return empty array for editorData with no mention nodes', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [{ text: 'hello', type: 'text' }],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+    expect(parseMentionedAgentsFromEditorData(editorData)).toEqual([]);
+  });
+
+  it('should extract agent mentions only (whitelist)', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                label: 'My Agent',
+                metadata: { id: 'agent-1', type: 'agent' },
+                type: 'mention',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+
+    expect(parseMentionedAgentsFromEditorData(editorData)).toEqual([
+      { id: 'agent-1', name: 'My Agent' },
+    ]);
+  });
+
+  it('should exclude topic mentions', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                label: 'Some Topic',
+                metadata: { id: 'topic-1', topicId: 'topic-1', type: 'topic' },
+                type: 'mention',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+
+    expect(parseMentionedAgentsFromEditorData(editorData)).toEqual([]);
+  });
+
+  it('should exclude ALL_MEMBERS and other non-agent mentions', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                label: 'All Members',
+                metadata: { id: 'ALL_MEMBERS', type: 'all_members' },
+                type: 'mention',
+              },
+              {
+                label: 'Unknown',
+                metadata: { id: 'x', type: 'custom' },
+                type: 'mention',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+
+    expect(parseMentionedAgentsFromEditorData(editorData)).toEqual([]);
+  });
+
+  it('should deduplicate agents by id', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                label: 'Agent A',
+                metadata: { id: 'agent-1', type: 'agent' },
+                type: 'mention',
+              },
+              {
+                label: 'Agent A again',
+                metadata: { id: 'agent-1', type: 'agent' },
+                type: 'mention',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+
+    expect(parseMentionedAgentsFromEditorData(editorData)).toEqual([
+      { id: 'agent-1', name: 'Agent A' },
+    ]);
+  });
+
+  it('should extract multiple distinct agent mentions', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                label: 'Agent A',
+                metadata: { id: 'agent-1', type: 'agent' },
+                type: 'mention',
+              },
+              {
+                label: 'Agent B',
+                metadata: { id: 'agent-2', type: 'agent' },
+                type: 'mention',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+
+    const result = parseMentionedAgentsFromEditorData(editorData);
+    expect(result).toEqual([
+      { id: 'agent-1', name: 'Agent A' },
+      { id: 'agent-2', name: 'Agent B' },
+    ]);
+  });
+
+  it('should only extract agents when mixed with topic mentions', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                label: 'Topic X',
+                metadata: { id: 'topic-1', topicId: 'topic-1', type: 'topic' },
+                type: 'mention',
+              },
+              {
+                label: 'Agent Y',
+                metadata: { id: 'agent-y', type: 'agent' },
+                type: 'mention',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+
+    expect(parseMentionedAgentsFromEditorData(editorData)).toEqual([
+      { id: 'agent-y', name: 'Agent Y' },
+    ]);
+  });
+
+  it('should handle nested children correctly', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                children: [
+                  {
+                    label: 'Nested Agent',
+                    metadata: { id: 'nested-1', type: 'agent' },
+                    type: 'mention',
+                  },
+                ],
+                type: 'paragraph',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+
+    expect(parseMentionedAgentsFromEditorData(editorData)).toEqual([
+      { id: 'nested-1', name: 'Nested Agent' },
+    ]);
+  });
+
+  it('should use id as fallback name when label is empty', () => {
+    const editorData = {
+      root: {
+        children: [
+          {
+            children: [
+              {
+                label: '',
+                metadata: { id: 'agent-no-label', type: 'agent' },
+                type: 'mention',
+              },
+            ],
+            type: 'paragraph',
+          },
+        ],
+        type: 'root',
+      },
+    };
+
+    expect(parseMentionedAgentsFromEditorData(editorData)).toEqual([
+      { id: 'agent-no-label', name: 'agent-no-label' },
     ]);
   });
 });

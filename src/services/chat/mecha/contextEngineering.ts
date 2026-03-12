@@ -501,6 +501,20 @@ export const contextEngineering = async ({
     );
   }
 
+  // Inject mentionedAgents independently of isAgentManagementEnabled.
+  // When user @mentions an agent, delegation context must always be injected
+  // even if the agent doesn't have agent-management tool in its config.
+  const hasMentionedAgents =
+    initialContext?.mentionedAgents && initialContext.mentionedAgents.length > 0;
+
+  if (hasMentionedAgents) {
+    agentManagementContext = {
+      ...agentManagementContext,
+      mentionedAgents: initialContext!.mentionedAgents,
+    };
+    log('mentionedAgents injected: %d agents', initialContext!.mentionedAgents!.length);
+  }
+
   // Create MessagesEngine with injected dependencies
   const engine = new MessagesEngine({
     // Agent configuration
@@ -565,7 +579,7 @@ export const contextEngineering = async ({
     // Extended contexts - only pass when enabled
     ...(isAgentBuilderEnabled && { agentBuilderContext }),
     ...(isGroupAgentBuilderEnabled && { groupAgentBuilderContext }),
-    ...(isAgentManagementEnabled && { agentManagementContext }),
+    ...((isAgentManagementEnabled || hasMentionedAgents) && { agentManagementContext }),
     ...(agentGroup && { agentGroup }),
     ...(gtdConfig && { gtd: gtdConfig }),
   });

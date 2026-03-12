@@ -1,39 +1,18 @@
-import {
-  ReactCodemirrorPlugin,
-  ReactCodePlugin,
-  ReactHRPlugin,
-  ReactLinkHighlightPlugin,
-  ReactListPlugin,
-  ReactMathPlugin,
-  ReactMentionPlugin,
-  ReactTablePlugin,
-  ReactVirtualBlockPlugin,
-} from '@lobehub/editor';
-import { Editor } from '@lobehub/editor/react';
-import { memo, useMemo } from 'react';
+import { ReactMentionPlugin, ReactTablePlugin } from '@lobehub/editor';
+import { Editor, useEditor } from '@lobehub/editor/react';
+import { memo, useEffect, useMemo } from 'react';
 
-import { ReactActionTagPlugin } from '@/features/ChatInput/InputEditor/ActionTag';
-import { ReactReferTopicPlugin } from '@/features/ChatInput/InputEditor/ReferTopic';
+import { createChatInputRichPlugins } from '@/features/ChatInput/InputEditor/plugins';
 
 interface RichTextMessageProps {
   editorState: unknown;
 }
 
-const EDITOR_PLUGINS = [
-  ReactListPlugin,
-  ReactCodePlugin,
-  ReactCodemirrorPlugin,
-  ReactHRPlugin,
-  ReactLinkHighlightPlugin,
-  ReactTablePlugin,
-  ReactVirtualBlockPlugin,
-  ReactMathPlugin,
-  ReactMentionPlugin,
-  ReactActionTagPlugin,
-  ReactReferTopicPlugin,
-];
+const EDITOR_PLUGINS = [...createChatInputRichPlugins(), ReactTablePlugin, ReactMentionPlugin];
 
 const RichTextMessage = memo<RichTextMessageProps>(({ editorState }) => {
+  const editor = useEditor();
+
   const content = useMemo(() => {
     if (!editorState || typeof editorState !== 'object') return null;
     if (Object.keys(editorState as Record<string, unknown>).length === 0) return null;
@@ -45,12 +24,19 @@ const RichTextMessage = memo<RichTextMessageProps>(({ editorState }) => {
     }
   }, [editorState]);
 
+  useEffect(() => {
+    if (editor && content) {
+      editor.setDocument('json', content);
+    }
+  }, [editor, content]);
+
   if (!content) return null;
 
   return (
     <Editor
       content={content}
       editable={false}
+      editor={editor}
       enablePasteMarkdown={false}
       markdownOption={false}
       plugins={EDITOR_PLUGINS}

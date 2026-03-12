@@ -9,6 +9,7 @@ export { injectReferTopicNode } from './editorDataHelpers';
 export {
   hasNonActionContent,
   parseCommandsFromEditorData,
+  parseMentionedAgentsFromEditorData,
   parseSelectedSkillsFromEditorData,
   parseSelectedToolsFromEditorData,
 } from './parseCommands';

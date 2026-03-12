@@ -1,4 +1,5 @@
 // Disable the auto sort key eslint rule to make the code more logic and readable
+import { AgentManagementIdentifier } from '@lobechat/builtin-tool-agent-management';
 import { ENABLE_BUSINESS_FEATURES } from '@lobechat/business-const';
 import { LOADING_FLAT } from '@lobechat/const';
 import { chainCompressContext } from '@lobechat/prompts';
@@ -40,6 +41,7 @@ import {
   type CommandSendOverrides,
   hasNonActionContent,
   injectReferTopicNode,
+  parseMentionedAgentsFromEditorData,
   parseSelectedSkillsFromEditorData,
   parseSelectedToolsFromEditorData,
   processCommands,
@@ -110,6 +112,7 @@ export class ConversationLifecycleActionImpl {
     const { internal_execAgentRuntime, mainInputEditor } = this.#get();
     const selectedSkills = parseSelectedSkillsFromEditorData(editorData);
     const selectedTools = parseSelectedToolsFromEditorData(editorData);
+    const mentionedAgents = parseMentionedAgentsFromEditorData(editorData);
 
     // Use context from params (required)
     const { agentId } = context;
@@ -180,9 +183,14 @@ export class ConversationLifecycleActionImpl {
       const group = agentGroupByIdSelectors.groupById(context.groupId)(getChatGroupStoreState());
       isGroupSupervisor = group?.supervisorAgentId === agentId;
     }
+    // In non-group context, @agent mentions make the current agent act as supervisor
+    const hasMentionedAgents = !context.groupId && mentionedAgents.length > 0;
+
     const operationContext = {
       ...context,
       ...(isCreatingNewThread && { threadId: undefined }),
+      // Only set isSupervisor for actual group supervisors — NOT for @agent mentions.
+      // isSupervisor triggers group-specific UI rendering (SupervisorMessage with group avatars).
       ...(isGroupSupervisor && { isSupervisor: true }),
     };
 
@@ -474,16 +482,34 @@ export class ConversationLifecycleActionImpl {
       )(this.#get());
 
       try {
-        const agentRuntimeInitialContext =
-          selectedTools.length > 0 || selectedSkills.length > 0
-            ? {
-                initialContext: {
-                  ...(selectedSkills.length > 0 ? { selectedSkills } : undefined),
-                  ...(selectedTools.length > 0 ? { selectedTools } : undefined),
-                },
-                phase: 'init' as const,
-              }
-            : undefined;
+        // When agents are @mentioned in non-group context, auto-enable agent-management tool
+        // so the supervisor can delegate via callAgent
+        const effectiveSelectedTools =
+          hasMentionedAgents &&
+          !selectedTools.some((t) => t.identifier === AgentManagementIdentifier)
+            ? [
+                ...selectedTools,
+                { identifier: AgentManagementIdentifier, name: 'Agent Management' },
+              ]
+            : selectedTools;
+
+        const hasInitialContext =
+          effectiveSelectedTools.length > 0 || selectedSkills.length > 0 || hasMentionedAgents;
+
+        const agentRuntimeInitialContext = hasInitialContext
+          ? {
+              initialContext: {
+                ...(selectedSkills.length > 0 ? { selectedSkills } : undefined),
+                ...(effectiveSelectedTools.length > 0
+                  ? { selectedTools: effectiveSelectedTools }
+                  : undefined),
+                // Only inject mentionedAgents in non-group context to avoid
+                // group @member mentions (including ALL_MEMBERS) leaking into agent-management
+                ...(hasMentionedAgents ? { mentionedAgents } : undefined),
+              },
+              phase: 'init' as const,
+            }
+          : undefined;
 
         await internal_execAgentRuntime({
           context: execContext,
