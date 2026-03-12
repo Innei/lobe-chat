@@ -4,24 +4,37 @@ import { useMemo } from 'react';
 
 import { useChatStore } from '@/store/chat';
 import { topicSelectors } from '@/store/chat/selectors';
-
-const MAX_TOPIC_ITEMS = 10;
+import { useGlobalStore } from '@/store/global';
+import { systemStatusSelectors } from '@/store/global/selectors';
 
 export const useTopicMentionItems = () => {
-  const topics = useChatStore(topicSelectors.displayTopics);
+  const topicPageSize = useGlobalStore(systemStatusSelectors.topicPageSize);
+
+  const topicsSelector = useMemo(
+    () => topicSelectors.displayTopicsForSidebar(topicPageSize),
+    [topicPageSize],
+  );
+  const topics = useChatStore(topicsSelector);
   const activeTopicId = useChatStore((s) => s.activeTopicId);
 
   return useMemo(() => {
     if (!topics || topics.length === 0) return [];
 
+    const MAX_LABEL_LENGTH = 50;
+
     return topics
       .filter((t) => t.id !== activeTopicId)
-      .slice(0, MAX_TOPIC_ITEMS)
-      .map((topic) => ({
-        icon: <Icon icon={MessageSquareText} size={20} />,
-        key: `topic-${topic.id}`,
-        label: topic.title || 'Untitled',
-        metadata: { topicId: topic.id, topicTitle: topic.title, type: 'topic' },
-      }));
+      .map((topic) => {
+        const title = topic.title || 'Untitled';
+        const label =
+          title.length > MAX_LABEL_LENGTH ? `${title.slice(0, MAX_LABEL_LENGTH)}...` : title;
+
+        return {
+          icon: <Icon icon={MessageSquareText} size={20} />,
+          key: `topic-${topic.id}`,
+          label,
+          metadata: { topicId: topic.id, topicTitle: topic.title, type: 'topic' },
+        };
+      });
   }, [topics, activeTopicId]);
 };

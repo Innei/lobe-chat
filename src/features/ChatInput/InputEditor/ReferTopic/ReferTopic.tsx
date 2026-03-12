@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useChatStore } from '@/store/chat';
 
+import { TAG_MARGIN_INLINE_END } from '../constants';
 import type { ReferTopicNode } from './ReferTopicNode';
 
 interface ReferTopicProps {
@@ -28,7 +29,12 @@ const ReferTopic = memo<ReferTopicProps>(({ node }) => {
 
   return (
     <span
-      style={{ cursor: 'pointer', display: 'inline-flex', userSelect: 'none' }}
+      style={{
+        cursor: 'pointer',
+        display: 'inline-flex',
+        userSelect: 'none',
+        marginInlineEnd: TAG_MARGIN_INLINE_END,
+      }}
       onClick={handleClick}
     >
       <Tag color="green" icon={<MessageSquarePlusIcon size={12} />} variant="outlined">

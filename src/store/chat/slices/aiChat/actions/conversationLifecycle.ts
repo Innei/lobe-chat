@@ -301,7 +301,7 @@ export class ConversationLifecycleActionImpl {
     this.#get().associateMessageWithOperation(tempAssistantId, operationId);
 
     // Store editor state in operation metadata for cancel restoration
-    const jsonState = mainInputEditor?.getJSONState();
+    const jsonState = inputEditorData ?? mainInputEditor?.getJSONState();
     this.#get().updateOperationMetadata(operationId, {
       inputEditorTempState: jsonState,
       inputSendErrorMsg: undefined,
@@ -415,7 +415,12 @@ export class ConversationLifecycleActionImpl {
         // Check if error is due to cancellation
         if (!isAbort) {
           this.#get().updateOperationMetadata(operationId, { inputSendErrorMsg: e.message });
-          this.#get().mainInputEditor?.setDocument('markdown', message);
+          const op = this.#get().operations[operationId];
+          if (op?.metadata.inputEditorTempState) {
+            this.#get().mainInputEditor?.setJSONState(op.metadata.inputEditorTempState);
+          } else {
+            this.#get().mainInputEditor?.setDocument('markdown', message);
+          }
         }
       }
     } finally {

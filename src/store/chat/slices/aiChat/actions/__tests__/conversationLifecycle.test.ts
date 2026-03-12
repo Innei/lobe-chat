@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import { TRPCClientError } from '@trpc/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { aiChatService } from '@/services/aiChat';
@@ -39,6 +40,7 @@ beforeEach(() => {
       refreshMessages: vi.fn(),
       refreshTopic: vi.fn(),
       internal_execAgentRuntime: vi.fn(),
+      mainInputEditor: null,
     });
   });
 });
@@ -215,6 +217,58 @@ describe('ConversationLifecycle actions', () => {
         });
 
         expect(result.current.internal_execAgentRuntime).not.toHaveBeenCalled();
+      });
+
+      it('should restore the pre-send editor snapshot when server send fails', async () => {
+        const { result } = renderHook(() => useChatStore());
+        const inputEditorState = {
+          root: {
+            children: [
+              {
+                children: [{ text: 'Restored rich text', type: 'text', version: 1 }],
+                type: 'paragraph',
+                version: 1,
+              },
+            ],
+            type: 'root',
+            version: 1,
+          },
+        };
+        const clearedEditorState = {
+          root: { children: [], type: 'root', version: 1 },
+        };
+        const setDocument = vi.fn();
+        const setJSONState = vi.fn();
+
+        vi.spyOn(aiChatService, 'sendMessageInServer').mockRejectedValue(
+          new TRPCClientError('restore failed'),
+        );
+
+        act(() => {
+          useChatStore.setState({
+            mainInputEditor: {
+              getJSONState: vi.fn().mockReturnValue(clearedEditorState),
+              setDocument,
+              setJSONState,
+            } as any,
+          });
+        });
+
+        await act(async () => {
+          await result.current.sendMessage({
+            context: createTestContext(),
+            editorData: inputEditorState as any,
+            message: 'Restored rich text',
+          });
+        });
+
+        const sendMessageOperation = Object.values(result.current.operations).find(
+          (operation) => operation.type === 'sendMessage',
+        );
+
+        expect(sendMessageOperation?.metadata.inputEditorTempState).toEqual(inputEditorState);
+        expect(setJSONState).toHaveBeenCalledWith(inputEditorState);
+        expect(setDocument).not.toHaveBeenCalled();
       });
 
       it('should create user message and trigger AI processing', async () => {

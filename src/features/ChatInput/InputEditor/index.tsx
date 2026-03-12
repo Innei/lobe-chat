@@ -155,6 +155,7 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
       mentionOption={
         enableMention
           ? {
+              fuseOptions: { keys: ['key', 'label', 'metadata.topicTitle'], threshold: 0.3 },
               items: mergedMentionItems,
               markdownWriter: (mention) => {
                 if (mention.metadata?.type === 'topic') {
@@ -166,7 +167,7 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
                 if (option.metadata?.type === 'topic') {
                   editor.dispatchCommand(INSERT_REFER_TOPIC_COMMAND, {
                     topicId: option.metadata.topicId as string,
-                    topicTitle: String(option.label),
+                    topicTitle: String(option.metadata.topicTitle ?? option.label),
                   });
                 } else {
                   editor.dispatchCommand(INSERT_MENTION_COMMAND, {
