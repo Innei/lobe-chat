@@ -4,6 +4,12 @@ import debug from 'debug';
 import { BaseProvider } from '../base/BaseProvider';
 import type { PipelineContext, ProcessorOptions } from '../types';
 
+declare module '../types' {
+  interface PipelineContextMetadataOverrides {
+    agentBuilderContextInjected?: boolean;
+  }
+}
+
 const log = debug('context-engine:provider:AgentBuilderContextInjector');
 
 /**

@@ -19,6 +19,7 @@ import type { GTDPlan } from '../../providers/GTDPlanInjector';
 import type { GTDTodoList } from '../../providers/GTDTodoInjector';
 import type { SkillMeta } from '../../providers/SkillContextProvider';
 import type { ToolDiscoveryMeta } from '../../providers/ToolDiscoveryProvider';
+import type { PipelineContextMetadata } from '../../types';
 import type { LobeToolManifest } from '../tools/types';
 
 /**
@@ -305,7 +306,7 @@ export interface MessagesEngineResult {
   /** Processed messages in OpenAI format */
   messages: OpenAIChatMessage[];
   /** Processing metadata */
-  metadata: Record<string, any>;
+  metadata: PipelineContextMetadata;
   /** Processing statistics */
   stats: {
     /** Number of processors executed */

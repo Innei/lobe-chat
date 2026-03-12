@@ -4,6 +4,12 @@ import debug from 'debug';
 import { BaseFirstUserContentProvider } from '../base/BaseFirstUserContentProvider';
 import type { PipelineContext, ProcessorOptions } from '../types';
 
+declare module '../types' {
+  interface PipelineContextMetadataOverrides {
+    groupAgentBuilderContextInjected?: boolean;
+  }
+}
+
 const log = debug('context-engine:provider:GroupAgentBuilderContextInjector');
 
 /**

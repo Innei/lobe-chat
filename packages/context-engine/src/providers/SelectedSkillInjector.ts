@@ -5,6 +5,15 @@ import debug from 'debug';
 import { BaseLastUserContentProvider } from '../base/BaseLastUserContentProvider';
 import type { PipelineContext, ProcessorOptions } from '../types';
 
+declare module '../types' {
+  interface PipelineContextMetadataOverrides {
+    selectedSkillContext?: {
+      injected: boolean;
+      skillsCount: number;
+    };
+  }
+}
+
 const log = debug('context-engine:provider:SelectedSkillInjector');
 
 export interface SelectedSkillInjectorConfig {

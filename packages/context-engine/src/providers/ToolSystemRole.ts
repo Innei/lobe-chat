@@ -7,6 +7,17 @@ import { ToolNameResolver } from '../engine/tools';
 import type { LobeToolManifest } from '../engine/tools/types';
 import type { PipelineContext, ProcessorOptions } from '../types';
 
+declare module '../types' {
+  interface PipelineContextMetadataOverrides {
+    toolSystemRole?: {
+      contentLength: number;
+      injected: boolean;
+      supportsFunctionCall: boolean;
+      toolsCount: number;
+    };
+  }
+}
+
 const log = debug('context-engine:provider:ToolSystemRoleProvider');
 
 /**
