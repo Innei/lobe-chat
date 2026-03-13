@@ -32,7 +32,7 @@ describe('prepareSelectedSkillPreload', () => {
         role: 'assistant',
         tools: [
           expect.objectContaining({
-            apiName: 'runSkill',
+            apiName: 'activateSkill',
             arguments: JSON.stringify({ name: 'Grep' }),
             id: expect.any(String),
             identifier: 'lobe-skills',
@@ -45,7 +45,7 @@ describe('prepareSelectedSkillPreload', () => {
       expect.objectContaining({
         content: 'Use grep to search the codebase.',
         plugin: expect.objectContaining({
-          apiName: 'runSkill',
+          apiName: 'activateSkill',
           arguments: JSON.stringify({ name: 'Grep' }),
           identifier: 'lobe-skills',
           type: 'builtin',

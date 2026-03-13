@@ -120,7 +120,7 @@ const buildPersistedPreloadMessages = (skills: PreloadedSkill[]): SendPreloadMes
         role: 'assistant',
         tools: [
           {
-            apiName: SkillsApiName.runSkill,
+            apiName: SkillsApiName.activateSkill,
             arguments: args,
             id: toolCallId,
             identifier: SkillsIdentifier,
@@ -131,7 +131,7 @@ const buildPersistedPreloadMessages = (skills: PreloadedSkill[]): SendPreloadMes
       {
         content: skill.content,
         plugin: {
-          apiName: SkillsApiName.runSkill,
+          apiName: SkillsApiName.activateSkill,
           arguments: args,
           identifier: SkillsIdentifier,
           type: 'builtin',
