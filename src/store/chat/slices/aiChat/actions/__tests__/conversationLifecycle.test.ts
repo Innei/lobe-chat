@@ -374,7 +374,7 @@ describe('ConversationLifecycle actions', () => {
                 role: 'assistant',
                 tools: [
                   expect.objectContaining({
-                    apiName: 'runSkill',
+                    apiName: 'activateSkill',
                     arguments: JSON.stringify({ name: 'User Memory' }),
                     identifier: 'lobe-skills',
                   }),
@@ -389,7 +389,7 @@ describe('ConversationLifecycle actions', () => {
                 role: 'assistant',
                 tools: [
                   expect.objectContaining({
-                    apiName: 'runSkill',
+                    apiName: 'activateSkill',
                     arguments: JSON.stringify({ name: 'Instruction' }),
                     identifier: 'lobe-skills',
                   }),
