@@ -69,7 +69,7 @@ export class ToolSystemRoleProvider extends BaseProvider {
     clonedContext.metadata.toolSystemRole = {
       contentLength: toolSystemRole.length,
       injected: true,
-      supportsFunctionCall: this.config.isCanUseFC(this.config.model, this.config.provider),
+      supportsFunctionCall: !!this.config.isCanUseFC(this.config.model, this.config.provider),
       toolsCount: this.config.manifests.length,
     };
 

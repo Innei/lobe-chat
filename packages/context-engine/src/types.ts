@@ -61,6 +61,7 @@ export interface PipelineContextMetadata extends PipelineContextMetadataOverride
   currentTokenCount?: number;
   maxTokens?: number;
   model?: string;
+  provider?: string;
 }
 
 /**

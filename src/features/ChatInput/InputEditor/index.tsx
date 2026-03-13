@@ -147,7 +147,7 @@ const InputEditor = memo<{ defaultRows?: number }>(({ defaultRows = 2 }) => {
       className={className}
       content={''}
       editor={editor}
-      slashPlacement={slashPlacement}
+      {...{ slashPlacement }}
       {...richRenderProps}
       placeholder={<Placeholder />}
       type={'text'}
